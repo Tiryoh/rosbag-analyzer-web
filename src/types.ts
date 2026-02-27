@@ -41,3 +41,33 @@ export const SEVERITY_BG_COLORS: Record<number, string> = {
   8: 'bg-red-50',
   16: 'bg-red-100',
 };
+
+// Diagnostics types
+export interface DiagnosticStatusEntry {
+  timestamp: number;
+  name: string;
+  level: number;
+  message: string;
+  values: { key: string; value: string }[];
+}
+
+export const DIAGNOSTIC_LEVEL_NAMES: Record<number, string> = {
+  0: 'OK',
+  1: 'WARN',
+  2: 'ERROR',
+  3: 'STALE',
+};
+
+export const DIAGNOSTIC_LEVEL_COLORS: Record<number, string> = {
+  0: 'text-green-500',
+  1: 'text-yellow-500',
+  2: 'text-red-500',
+  3: 'text-gray-400',
+};
+
+export const DIAGNOSTIC_LEVEL_BG_COLORS: Record<number, string> = {
+  0: 'bg-green-50',
+  1: 'bg-yellow-50',
+  2: 'bg-red-50',
+  3: 'bg-gray-100',
+};

@@ -1,10 +1,12 @@
 import Bag from '@foxglove/rosbag/dist/cjs/Bag';
 import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
-import type { RosoutMessage } from './types';
+import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 
 export async function loadRosbagMessages(file: File): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
+  diagnostics: DiagnosticStatusEntry[];
+  hasDiagnostics: boolean;
 }> {
   const messages: RosoutMessage[] = [];
   const uniqueNodes = new Set<string>();
@@ -70,79 +72,115 @@ export async function loadRosbagMessages(file: File): Promise<{
       );
     }
 
-    // Find rosout topics
-    console.log('Searching for rosout topics...');
+    // Find rosout and diagnostics topics
+    console.log('Searching for rosout and diagnostics topics...');
     const rosoutTopics: string[] = [];
+    const diagnosticsTopics: string[] = [];
     for (const [connId, conn] of bag.connections) {
       console.log(`  Connection ${connId}: Topic: ${conn.topic}, Type: ${conn.type}`);
       if (conn.topic.includes('rosout') || conn.type === 'rosgraph_msgs/Log') {
         rosoutTopics.push(conn.topic);
         console.log(`    ✓ Found rosout topic: ${conn.topic}`);
       }
+      if (conn.topic.includes('diagnostics') || conn.type === 'diagnostic_msgs/DiagnosticArray') {
+        diagnosticsTopics.push(conn.topic);
+        console.log(`    ✓ Found diagnostics topic: ${conn.topic}`);
+      }
     }
 
     console.log('Total rosout topics found:', rosoutTopics.length);
+    console.log('Total diagnostics topics found:', diagnosticsTopics.length);
 
-    if (rosoutTopics.length === 0) {
+    if (rosoutTopics.length === 0 && diagnosticsTopics.length === 0) {
       const availableTopics = Array.from(bag.connections.values())
         .map((conn: any) => `  - ${conn.topic} [${conn.type}]`)
         .join('\n');
 
       throw new Error(
-        `No rosout topics found in bag file.\n\nAvailable topics:\n${availableTopics}\n\n` +
-        `Looking for topics containing 'rosout' or message type 'rosgraph_msgs/Log'`
+        `No rosout or diagnostics topics found in bag file.\n\nAvailable topics:\n${availableTopics}\n\n` +
+        `Looking for topics containing 'rosout' or 'diagnostics_agg'`
       );
     }
 
-    // Read messages with decompression support
-    console.log('Reading messages from topics:', rosoutTopics);
-    let messageCount = 0;
+    const decompressOptions = {
+      bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
+      lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
+    };
 
-    await bag.readMessages(
-      {
-        topics: rosoutTopics,
-        decompress: {
-          bz2: (buffer: Uint8Array) => {
-            console.log('Decompressing bz2 chunk during read, size:', buffer.length);
-            return bzip2Decompress(buffer);
-          },
-          lz4: (buffer: Uint8Array) => {
-            console.log('Decompressing lz4 chunk during read, size:', buffer.length);
-            return lz4.decompress(buffer);
-          },
-        },
-      },
-      (result: any) => {
-        messageCount++;
-        if (messageCount % 100 === 0) {
-          console.log(`  Processing message ${messageCount}...`);
-        }
+    // Read rosout messages
+    if (rosoutTopics.length > 0) {
+      console.log('Reading rosout messages from topics:', rosoutTopics);
+      let messageCount = 0;
 
-        const msg = result.message;
+      await bag.readMessages(
+        { topics: rosoutTopics, decompress: decompressOptions },
+        (result: any) => {
+          messageCount++;
+          if (messageCount % 100 === 0) {
+            console.log(`  Processing rosout message ${messageCount}...`);
+          }
 
-        if (msg && msg.level !== undefined && msg.msg !== undefined) {
-          const rosoutMsg: RosoutMessage = {
-            timestamp: result.timestamp.sec + result.timestamp.nsec / 1e9,
-            node: msg.name || 'unknown',
-            severity: msg.level,
-            message: msg.msg,
-            file: msg.file || '',
-            line: msg.line || 0,
-            function: msg.function || '',
-            topics: msg.topics || [],
-          };
+          const msg = result.message;
 
-          messages.push(rosoutMsg);
-          if (msg.name) {
-            uniqueNodes.add(msg.name);
+          if (msg && msg.level !== undefined && msg.msg !== undefined) {
+            const rosoutMsg: RosoutMessage = {
+              timestamp: result.timestamp.sec + result.timestamp.nsec / 1e9,
+              node: msg.name || 'unknown',
+              severity: msg.level,
+              message: msg.msg,
+              file: msg.file || '',
+              line: msg.line || 0,
+              function: msg.function || '',
+              topics: msg.topics || [],
+            };
+
+            messages.push(rosoutMsg);
+            if (msg.name) {
+              uniqueNodes.add(msg.name);
+            }
           }
         }
-      }
-    );
+      );
+      console.log(`✓ Successfully loaded ${messages.length} rosout messages from ${uniqueNodes.size} nodes`);
+    }
 
-    console.log(`✓ Successfully loaded ${messages.length} rosout messages from ${uniqueNodes.size} nodes`);
+    // Read diagnostics messages (state-change only)
+    const diagnostics: DiagnosticStatusEntry[] = [];
+    const hasDiagnostics = diagnosticsTopics.length > 0;
 
-    return { messages, uniqueNodes };
+    if (hasDiagnostics) {
+      console.log('Reading diagnostics messages from topics:', diagnosticsTopics);
+      const lastState = new Map<string, { level: number; message: string }>();
+
+      await bag.readMessages(
+        { topics: diagnosticsTopics, decompress: decompressOptions },
+        (result: any) => {
+          const msg = result.message;
+          if (!msg || !msg.status) return;
+
+          const timestamp = result.timestamp.sec + result.timestamp.nsec / 1e9;
+
+          for (const status of msg.status) {
+            const name: string = status.name || 'unknown';
+            const level: number = status.level ?? 0;
+            const message: string = status.message || '';
+            const values: { key: string; value: string }[] = (status.values || []).map((v: any) => ({
+              key: v.key || '',
+              value: v.value || '',
+            }));
+
+            const prev = lastState.get(name);
+            if (!prev || prev.level !== level || prev.message !== message) {
+              lastState.set(name, { level, message });
+              diagnostics.push({ timestamp, name, level, message, values });
+            }
+          }
+        }
+      );
+      console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics state changes`);
+    }
+
+    return { messages, uniqueNodes, diagnostics, hasDiagnostics };
   } catch (error) {
     console.error('!!! Error loading rosbag !!!');
     console.error('Error type:', error?.constructor?.name);
@@ -292,6 +330,50 @@ export function exportToTXT(messages: RosoutMessage[], timezone: 'local' | 'utc'
     const location = msg.file ? `${msg.file}:${msg.line || 0}` : '';
     let line = `[${time}] [${severity}] [${msg.node}]: ${msg.message}`;
     if (location) line += ` (${location})`;
+    return line;
+  }).join('\n');
+}
+
+const DIAGNOSTIC_LEVEL_NAMES: Record<number, string> = {
+  0: 'OK',
+  1: 'WARN',
+  2: 'ERROR',
+  3: 'STALE',
+};
+
+export function exportDiagnosticsToCSV(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
+  const headers = ['Timestamp', 'Time', 'Name', 'Level', 'Message', 'Values'];
+  const rows = diagnostics.map(d => [
+    d.timestamp.toFixed(6),
+    formatTimestamp(d.timestamp, timezone),
+    escapeCSV(d.name),
+    DIAGNOSTIC_LEVEL_NAMES[d.level] || String(d.level),
+    escapeCSV(d.message),
+    escapeCSV(d.values.map(v => `${v.key}=${v.value}`).join('; ')),
+  ]);
+  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+}
+
+export function exportDiagnosticsToJSON(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
+  const exportData = diagnostics.map(d => ({
+    timestamp: d.timestamp,
+    time: formatTimestamp(d.timestamp, timezone),
+    name: d.name,
+    level: DIAGNOSTIC_LEVEL_NAMES[d.level] || d.level,
+    message: d.message,
+    values: d.values,
+  }));
+  return JSON.stringify(exportData, null, 2);
+}
+
+export function exportDiagnosticsToTXT(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
+  return diagnostics.map(d => {
+    const time = formatTimestamp(d.timestamp, timezone);
+    const level = DIAGNOSTIC_LEVEL_NAMES[d.level] || String(d.level);
+    let line = `[${time}] [${level}] ${d.name}: ${d.message}`;
+    if (d.values.length > 0) {
+      line += ` {${d.values.map(v => `${v.key}=${v.value}`).join(', ')}}`;
+    }
     return line;
   }).join('\n');
 }
