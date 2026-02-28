@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3 } from 'lucide-react';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import { SEVERITY_NAMES, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
@@ -806,6 +806,7 @@ function App() {
                   setDiagKeywords('');
                   setDiagRegexPattern('');
                   setFilteredDiagnostics(diagnostics);
+                  setExpandedDiagRows(new Set());
                 }}
                 className="px-6 py-2 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-md font-medium transition-colors"
               >
@@ -907,9 +908,8 @@ function App() {
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredDiagnostics.slice(0, previewLimit).map((diag, idx) => (
-                    <>
+                    <Fragment key={idx}>
                       <tr
-                        key={idx}
                         className={`${DIAGNOSTIC_LEVEL_BG_COLORS[diag.level] || ''} cursor-pointer hover:opacity-80`}
                         onClick={() => toggleDiagRow(idx)}
                       >
@@ -945,7 +945,7 @@ function App() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

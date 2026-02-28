@@ -1,6 +1,7 @@
 import Bag from '@foxglove/rosbag/dist/cjs/Bag';
 import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
+import { DIAGNOSTIC_LEVEL_NAMES } from './types';
 
 export async function loadRosbagMessages(file: File): Promise<{
   messages: RosoutMessage[];
@@ -98,7 +99,7 @@ export async function loadRosbagMessages(file: File): Promise<{
 
       throw new Error(
         `No rosout or diagnostics topics found in bag file.\n\nAvailable topics:\n${availableTopics}\n\n` +
-        `Looking for topics containing 'rosout' or 'diagnostics_agg'`
+        `Looking for topics containing 'rosout' or 'diagnostics' (e.g. '/diagnostics' or '/diagnostics_agg') or of type 'diagnostic_msgs/DiagnosticArray'`
       );
     }
 
@@ -333,13 +334,6 @@ export function exportToTXT(messages: RosoutMessage[], timezone: 'local' | 'utc'
     return line;
   }).join('\n');
 }
-
-const DIAGNOSTIC_LEVEL_NAMES: Record<number, string> = {
-  0: 'OK',
-  1: 'WARN',
-  2: 'ERROR',
-  3: 'STALE',
-};
 
 export function exportDiagnosticsToCSV(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
   const headers = ['Timestamp', 'Time', 'Name', 'Level', 'Message', 'Values'];
