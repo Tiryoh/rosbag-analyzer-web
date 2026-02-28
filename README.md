@@ -1,4 +1,4 @@
-# ROSbag Rosout Analyzer - Web Application
+# ROSbag Analyzer - Web Application
 
 Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembly. No installation, no server, no WSL required - just open in any modern browser!
 
@@ -17,7 +17,7 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 
 ### Option 1: Live Demo
 
-Open the live demo at: [https://rosbag-rosout-analyzer.pages.dev](https://rosbag-rosout-analyzer.pages.dev)
+Open the live demo at: [https://rosbag-analyzer.pages.dev](https://rosbag-analyzer.pages.dev)
 
 ### Option 2: Development Mode
 

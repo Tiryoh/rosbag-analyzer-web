@@ -263,7 +263,7 @@ function App() {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
-            🎯 rosbag rosout/diagnostics Analyzer
+            🎯 ROSbag Analyzer
           </h1>
             <p className="text-gray-600 dark:text-gray-300">
             Browser-based tool for analyzing rosout/rosout_agg and diagnostics/diagnostics_agg - No installation required!<br />

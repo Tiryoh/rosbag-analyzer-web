@@ -1,7 +1,7 @@
 {
   "name": "rosbag-analyzer-web",
   "version": "1.0.0",
-  "description": "Browser-based ROSbag Analyzer with rosout message filtering",
+  "description": "Browser-based ROSbag Analyzer for rosout and diagnostics topics with filtering",
   "private": true,
   "type": "module",
   "scripts": {
