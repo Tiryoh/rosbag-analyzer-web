@@ -37,7 +37,7 @@ jobs:
         with:
           script: |
             const marker = '<!-- cfpages-preview -->';
-            const body = `${marker}\n🚀 Preview deployed: ${{ steps.deploy.outputs.deployment-url }}`;
+            const body = `${marker}\n🚀 Preview deployed: ${{ steps.deploy.outputs.deployment-url }}\n🔗 Alias URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
