@@ -3,8 +3,16 @@ name: Deploy to Cloudflare Pages
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'src/**/*.test.ts'
+      - 'docs/**'
+      - '.github/workflows/test.yml'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'src/**/*.test.ts'
+      - 'docs/**'
+      - '.github/workflows/test.yml'
 
 jobs:
   deploy:
