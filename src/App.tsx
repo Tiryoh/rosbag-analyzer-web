@@ -943,6 +943,9 @@ function App() {
         )}
         {/* Footer */}
         <footer className="mt-12 pb-6 text-center space-y-1">
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+            github.com/Tiryoh/web_rosbag_analyzer
+          </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Works offline — all processing runs locally in your browser.
           </p>
