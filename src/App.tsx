@@ -12,6 +12,7 @@ import {
   exportDiagnosticsToJSON,
   exportDiagnosticsToTXT,
   downloadFile,
+  filterDiagnostics,
 } from './rosbagUtils';
 
 function App() {
@@ -175,30 +176,13 @@ function App() {
   const uniqueDiagNames = new Set(diagnostics.map(d => d.name));
 
   const applyDiagFilters = () => {
-    const filtered = diagnostics.filter(d => {
-      const conditions: boolean[] = [];
-
-      if (diagSelectedLevels.size > 0) {
-        conditions.push(diagSelectedLevels.has(d.level));
-      }
-      if (diagSelectedNames.size > 0) {
-        conditions.push(diagSelectedNames.has(d.name));
-      }
-      if (diagUseRegex && diagRegexPattern.trim()) {
-        try {
-          const regex = new RegExp(diagRegexPattern, 'i');
-          conditions.push(regex.test(d.message));
-        } catch { /* skip invalid regex */ }
-      } else if (!diagUseRegex && diagKeywords) {
-        const keywords = diagKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-        if (keywords.length > 0) {
-          const msgLower = d.message.toLowerCase();
-          conditions.push(keywords.some(kw => msgLower.includes(kw)));
-        }
-      }
-
-      if (conditions.length === 0) return true;
-      return diagFilterMode === 'AND' ? conditions.every(c => c) : conditions.some(c => c);
+    const filtered = filterDiagnostics(diagnostics, {
+      levels: diagSelectedLevels,
+      names: diagSelectedNames,
+      messageKeywords: diagUseRegex ? undefined : diagKeywords,
+      messageRegex: diagUseRegex ? diagRegexPattern : undefined,
+      filterMode: diagFilterMode,
+      useRegex: diagUseRegex,
     });
     setFilteredDiagnostics(filtered);
     setExpandedDiagRows(new Set());

@@ -263,6 +263,44 @@ export function filterMessages(
   });
 }
 
+export function filterDiagnostics(
+  diagnostics: DiagnosticStatusEntry[],
+  filters: {
+    levels?: Set<number>;
+    names?: Set<string>;
+    messageKeywords?: string;
+    messageRegex?: string;
+    filterMode?: 'OR' | 'AND';
+    useRegex?: boolean;
+  }
+): DiagnosticStatusEntry[] {
+  return diagnostics.filter(d => {
+    const conditions: boolean[] = [];
+
+    if (filters.levels && filters.levels.size > 0) {
+      conditions.push(filters.levels.has(d.level));
+    }
+    if (filters.names && filters.names.size > 0) {
+      conditions.push(filters.names.has(d.name));
+    }
+    if (filters.useRegex && filters.messageRegex && filters.messageRegex.trim()) {
+      try {
+        const regex = new RegExp(filters.messageRegex, 'i');
+        conditions.push(regex.test(d.message));
+      } catch { /* skip invalid regex */ }
+    } else if (!filters.useRegex && filters.messageKeywords) {
+      const keywords = filters.messageKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+      if (keywords.length > 0) {
+        const msgLower = d.message.toLowerCase();
+        conditions.push(keywords.some(kw => msgLower.includes(kw)));
+      }
+    }
+
+    if (conditions.length === 0) return true;
+    return filters.filterMode === 'AND' ? conditions.every(c => c) : conditions.some(c => c);
+  });
+}
+
 const SEVERITY_NAMES: Record<number, string> = {
   1: 'DEBUG',
   2: 'INFO',
