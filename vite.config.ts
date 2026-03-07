@@ -14,4 +14,7 @@ export default defineConfig({
     port: 3000,
     open: true,
   },
+  test: {
+    exclude: ['e2e/**', 'node_modules/**'],
+  },
 })

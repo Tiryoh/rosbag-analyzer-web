@@ -4,12 +4,16 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'e2e/**'
+      - 'playwright.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/test.yml'
   pull_request:
     paths:
       - 'src/**'
+      - 'e2e/**'
+      - 'playwright.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/test.yml'
@@ -39,3 +43,29 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           files: junit.xml
+
+  e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
