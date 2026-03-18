@@ -246,9 +246,9 @@ function App() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <div className="flex items-center gap-4 mb-2">
-            <img src="./logo.png" alt="ROSbag Analyzer" className="w-16 h-16" />
-            <h1 className="text-4xl font-bold text-gray-800 dark:text-white">
+          <div className="flex flex-col sm:flex-row items-center gap-4 mb-2">
+            <img src="./logo.png" alt="ROSbag Analyzer" className="w-20 h-20 sm:w-16 sm:h-16" />
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 dark:text-white text-center sm:text-left">
               ROSbag Analyzer
             </h1>
           </div>
