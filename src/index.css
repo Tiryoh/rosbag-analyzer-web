@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
