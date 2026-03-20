@@ -942,13 +942,13 @@ function App() {
         {/* Footer */}
         <footer className="mt-12 pb-6 text-center space-y-1">
           <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            github.com/Tiryoh/web_rosbag_analyzer
+            github.com/Tiryoh/rosbag-analyzer-web
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Works offline — all processing runs locally in your browser.
           </p>
           <a
-            href="https://github.com/Tiryoh/web_rosbag_analyzer"
+            href="https://github.com/Tiryoh/rosbag-analyzer-web"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
