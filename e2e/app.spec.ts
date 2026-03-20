@@ -26,6 +26,11 @@ test.describe('Initial page', () => {
     await expect(page.getByText('ROSbag Analyzer')).toBeVisible();
   });
 
+  test('1-1a: shows logo image', async ({ page }) => {
+    const logo = page.getByRole('img', { name: 'ROSbag Analyzer' });
+    await expect(logo).toBeVisible();
+  });
+
   test('1-2: shows upload area', async ({ page }) => {
     await expect(page.getByText('Click to upload')).toBeVisible();
     await expect(page.locator('input[type="file"]')).toBeAttached();
