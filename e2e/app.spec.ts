@@ -32,7 +32,7 @@ test.describe('Initial page', () => {
   });
 
   test('1-2: shows upload area', async ({ page }) => {
-    await expect(page.getByText('Click to upload')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Click to upload' })).toBeVisible();
     await expect(page.locator('input[type="file"]')).toBeAttached();
   });
 
@@ -253,6 +253,13 @@ test.describe('Rosout message table', () => {
     expect(rowClass).toBeTruthy();
     expect(rowClass).toMatch(/bg-/);
   });
+
+  test('6-6: mobile table controls remain visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('heading', { name: /Messages/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: '100', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Local' })).toBeVisible();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -282,7 +289,7 @@ test.describe('Diagnostics tab', () => {
   });
 
   test('7-4: name filter', async ({ page }) => {
-    await page.getByLabel('/sensor/lidar').check();
+    await page.getByRole('checkbox', { name: '/sensor/lidar' }).check();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     // lidar has state changes: OK → ERROR → STALE = 3 entries
     const rows = page.locator('table tbody tr');
@@ -325,17 +332,19 @@ test.describe('Diagnostics table', () => {
   });
 
   test('8-2: row expand shows values', async ({ page }) => {
-    // Click a row that has values
-    await page.locator('table tbody tr').first().click();
+    const toggleButton = page.locator('table tbody button[aria-expanded]').first();
+    await toggleButton.click();
     // Values should be visible (e.g. "frequency" key)
+    await expect(toggleButton).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByText('frequency')).toBeVisible();
   });
 
   test('8-3: row collapse hides values', async ({ page }) => {
-    const firstRow = page.locator('table tbody tr').first();
-    await firstRow.click();
+    const toggleButton = page.locator('table tbody button[aria-expanded]').first();
+    await toggleButton.click();
     await expect(page.getByText('frequency')).toBeVisible();
-    await firstRow.click();
+    await toggleButton.click();
+    await expect(toggleButton).toHaveAttribute('aria-expanded', 'false');
     await expect(page.getByText('frequency')).not.toBeVisible();
   });
 

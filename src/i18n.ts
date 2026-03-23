@@ -16,6 +16,8 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // Loading / Error
     'loading.message': 'Loading bag file...',
     'error.title': 'Error loading bag file',
+    'status.loadedRosout': 'Loaded {messageCount} rosout messages from {nodeCount} nodes',
+    'status.loadedRosoutDiagnostics': 'Loaded {messageCount} rosout messages from {nodeCount} nodes, {diagnosticCount} diagnostics state changes',
 
     // Tabs
     'tab.rosout': 'Rosout',
@@ -63,7 +65,14 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'table.level': 'Level',
     'table.message': 'Message',
     'table.name': 'Name',
-    'table.values': 'values',
+    'table.details': 'Details',
+    'table.valuesCount': '{count} values',
+    'table.timezone.local': 'Local',
+    'table.timezone.utc': 'UTC',
+    'table.preview.messages': 'Showing first {shownCount} of {totalCount} messages',
+    'table.preview.stateChanges': 'Showing first {shownCount} of {totalCount} state changes',
+    'table.expandDetails': 'Expand details for {name}',
+    'table.collapseDetails': 'Collapse details for {name}',
 
     // Empty state
     'empty.rosout': 'No messages match the current filters.',
@@ -75,17 +84,19 @@ const dictionaries: Record<Lang, Record<string, string>> = {
   },
   ja: {
     // Header
-    'header.description': 'rosout/rosout_agg・diagnostics/diagnostics_agg のブラウザ解析ツール',
+    'header.description': 'rosout/rosout_agg・diagnostics/diagnostics_agg をブラウザで解析するツール',
     'header.privacy': 'データはブラウザ内で処理され、外部には一切送信されません。',
 
     // File upload
     'upload.click': 'ファイルを選択',
     'upload.dragDrop': 'またはドラッグ＆ドロップ',
-    'upload.fileType': 'ROSbagファイル (.bag)',
+    'upload.fileType': 'ROSbag ファイル (.bag)',
 
     // Loading / Error
     'loading.message': '読み込み中...',
     'error.title': '読み込みエラー',
+    'status.loadedRosout': 'rosout {messageCount} 件、{nodeCount} ノードを読み込みました',
+    'status.loadedRosoutDiagnostics': 'rosout {messageCount} 件、{nodeCount} ノード、診断状態の変化 {diagnosticCount} 件を読み込みました',
 
     // Tabs
     'tab.rosout': 'Rosout',
@@ -96,7 +107,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'filter.mode': '条件の組み合わせ',
     'filter.mode.or': 'OR（いずれかに一致）',
     'filter.mode.and': 'AND（すべてに一致）',
-    'filter.severity': '深刻度',
+    'filter.severity': '重大度',
     'filter.nodes': 'ノード',
     'filter.selectAll': 'すべて選択',
     'filter.clear': 'クリア',
@@ -115,8 +126,8 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // Statistics
     'stats.title': '統計',
     'stats.show': '統計を表示',
-    'stats.hide': '統計を閉じる',
-    'stats.bySeverity': '深刻度別',
+    'stats.hide': '統計を隠す',
+    'stats.bySeverity': '重大度別',
     'stats.topNodes': '上位5ノード',
 
     // Export
@@ -133,17 +144,30 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'table.level': 'レベル',
     'table.message': 'メッセージ',
     'table.name': '名前',
-    'table.values': '件の値',
+    'table.details': '詳細',
+    'table.valuesCount': '値 {count} 件',
+    'table.timezone.local': 'ローカル',
+    'table.timezone.utc': 'UTC',
+    'table.preview.messages': '{totalCount} 件中 {shownCount} 件を表示',
+    'table.preview.stateChanges': '{totalCount} 件中 {shownCount} 件を表示',
+    'table.expandDetails': '{name} の詳細を表示',
+    'table.collapseDetails': '{name} の詳細を隠す',
 
     // Empty state
     'empty.rosout': '条件に一致するメッセージはありません。',
-    'empty.diagnostics': '条件に一致するDiagnosticsはありません。',
+    'empty.diagnostics': '条件に一致する診断情報はありません。',
 
     // Footer
-    'footer.offline': 'オフライン対応 — すべての処理はブラウザ内で完結します。',
+    'footer.offline': 'オフラインでも利用できます。すべての処理はブラウザ内で行われます。',
     'footer.source': 'GitHub でソースを見る',
   },
 };
+
+function formatMessage(template: string, params: Record<string, string | number>): string {
+  return Object.entries(params).reduce((message, [key, value]) => {
+    return message.split(`{${key}}`).join(String(value));
+  }, template);
+}
 
 function detectLang(): Lang {
   const stored = localStorage.getItem('lang');
@@ -168,5 +192,9 @@ export function useI18n() {
     return dictionaries[lang][key] ?? dictionaries['en'][key] ?? key;
   }, [lang]);
 
-  return { lang, setLang, t };
+  const tf = useCallback((key: string, params: Record<string, string | number>): string => {
+    return formatMessage(t(key), params);
+  }, [t]);
+
+  return { lang, setLang, t, tf };
 }

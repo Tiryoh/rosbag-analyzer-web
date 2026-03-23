@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useRef, useState, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import { SEVERITY_NAMES, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
@@ -17,7 +17,7 @@ import {
 import { useI18n } from './i18n';
 
 function App() {
-  const { lang, setLang, t } = useI18n();
+  const { lang, setLang, t, tf } = useI18n();
   const [messages, setMessages] = useState<RosoutMessage[]>([]);
   const [filteredMessages, setFilteredMessages] = useState<RosoutMessage[]>([]);
   const [uniqueNodes, setUniqueNodes] = useState<Set<string>>(new Set());
@@ -52,6 +52,11 @@ function App() {
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -291,8 +296,8 @@ function App() {
 
         {/* File Upload */}
         <div className="animate-fade-in stagger-1 mb-8">
-          <label
-            className={`drop-zone flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer ${
+          <div
+            className={`drop-zone flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl ${
               isDragging
                 ? 'border-brand-500 bg-brand-50/50 dark:bg-brand-950/20'
                 : 'border-surface-300 dark:border-surface-700 bg-white/60 dark:bg-surface-900/60 backdrop-blur-sm'
@@ -303,19 +308,26 @@ function App() {
           >
             <div className="flex flex-col items-center justify-center py-6">
               <Upload className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-brand-500' : 'text-surface-400'}`} />
-              <p className="text-sm text-surface-600 dark:text-surface-400">
-                <span className="font-semibold text-surface-800 dark:text-surface-200">{t('upload.click')}</span> {t('upload.dragDrop')}
-              </p>
+              <button
+                type="button"
+                onClick={openFilePicker}
+                disabled={loading}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand-600 text-white shadow-sm transition-colors hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {t('upload.click')}
+              </button>
+              <p className="mt-3 text-sm text-surface-600 dark:text-surface-400">{t('upload.dragDrop')}</p>
               <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">{t('upload.fileType')}</p>
             </div>
             <input
+              ref={fileInputRef}
               type="file"
               className="hidden"
               accept=".bag"
               onChange={handleFileUpload}
               disabled={loading}
             />
-          </label>
+          </div>
         </div>
 
         {/* Loading */}
@@ -340,10 +352,16 @@ function App() {
         {hasData && !loading && (
           <div className="mb-8 text-center animate-fade-in">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-2 rounded-full">
-              {lang === 'ja'
-                ? <>rosout {messages.length.toLocaleString()} 件 / {uniqueNodes.size} ノード{hasDiagnostics && ` / Diagnostics ${diagnostics.length.toLocaleString()} 件`} を読み込みました</>
-                : <>Loaded {messages.length.toLocaleString()} rosout messages from {uniqueNodes.size} nodes{hasDiagnostics && `, ${diagnostics.length.toLocaleString()} diagnostics state changes`}</>
-              }
+              {hasDiagnostics
+                ? tf('status.loadedRosoutDiagnostics', {
+                    messageCount: messages.length.toLocaleString(),
+                    nodeCount: uniqueNodes.size,
+                    diagnosticCount: diagnostics.length.toLocaleString(),
+                  })
+                : tf('status.loadedRosout', {
+                    messageCount: messages.length.toLocaleString(),
+                    nodeCount: uniqueNodes.size,
+                  })}
             </p>
           </div>
         )}
@@ -567,19 +585,19 @@ function App() {
         {/* Messages Table (rosout) */}
         {activeTab === 'rosout' && filteredMessages.length > 0 && (
           <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden animate-fade-in stagger-4">
-            <div className="px-5 py-3 border-b border-surface-200 dark:border-surface-800 flex items-center justify-between">
+            <div className="px-5 py-3 border-b border-surface-200 dark:border-surface-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100">
                 {t('table.messages')} <span className="ml-2 text-xs font-mono text-surface-400">{filteredMessages.length.toLocaleString()}</span>
               </h2>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs text-surface-400">{t('table.show')}</span>
                   {[100, 500, 1000].map(n => (
                     <button key={n} onClick={() => setPreviewLimit(n)} className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${previewLimit === n ? 'bg-brand-600 text-white' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'}`}>{n}</button>
                   ))}
                 </div>
                 <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">
-                  {timezone === 'local' ? 'Local' : 'UTC'}
+                  {timezone === 'local' ? t('table.timezone.local') : t('table.timezone.utc')}
                 </button>
               </div>
             </div>
@@ -607,10 +625,10 @@ function App() {
             </div>
             {filteredMessages.length > previewLimit && (
               <div className="px-5 py-3 border-t border-surface-200 dark:border-surface-800 text-center text-xs text-surface-400">
-                {lang === 'ja'
-                  ? `${filteredMessages.length.toLocaleString()} 件中 ${previewLimit} 件を表示中`
-                  : `Showing first ${previewLimit} of ${filteredMessages.length.toLocaleString()} messages`
-                }
+                {tf('table.preview.messages', {
+                  shownCount: previewLimit,
+                  totalCount: filteredMessages.length.toLocaleString(),
+                })}
               </div>
             )}
           </div>
@@ -738,19 +756,19 @@ function App() {
         {/* Diagnostics Table */}
         {activeTab === 'diagnostics' && filteredDiagnostics.length > 0 && (
           <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden animate-fade-in stagger-4">
-            <div className="px-5 py-3 border-b border-surface-200 dark:border-surface-800 flex items-center justify-between">
+            <div className="px-5 py-3 border-b border-surface-200 dark:border-surface-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100">
                 {t('table.diagnosticsTitle')} <span className="ml-2 text-xs font-mono text-surface-400">{filteredDiagnostics.length.toLocaleString()}</span>
               </h2>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs text-surface-400">{t('table.show')}</span>
                   {[100, 500, 1000].map(n => (
                     <button key={n} onClick={() => setPreviewLimit(n)} className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${previewLimit === n ? 'bg-brand-600 text-white' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'}`}>{n}</button>
                   ))}
                 </div>
                 <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">
-                  {timezone === 'local' ? 'Local' : 'UTC'}
+                  {timezone === 'local' ? t('table.timezone.local') : t('table.timezone.utc')}
                 </button>
               </div>
             </div>
@@ -758,6 +776,9 @@ function App() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-surface-100/50 dark:bg-surface-800/50">
+                    <th className="w-12 px-3 py-2.5">
+                      <span className="sr-only">{t('table.details')}</span>
+                    </th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-surface-400 uppercase tracking-wider">{t('table.time')}</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-surface-400 uppercase tracking-wider">{t('table.name')}</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-surface-400 uppercase tracking-wider">{t('table.level')}</th>
@@ -767,7 +788,27 @@ function App() {
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-800/50">
                   {filteredDiagnostics.slice(0, previewLimit).map((diag, idx) => (
                     <Fragment key={idx}>
-                      <tr className={`${DIAGNOSTIC_LEVEL_BG_COLORS[diag.level] || ''} cursor-pointer hover:bg-surface-100/50 dark:hover:bg-surface-800/30 transition-colors`} onClick={() => toggleDiagRow(idx)}>
+                      <tr className={`${DIAGNOSTIC_LEVEL_BG_COLORS[diag.level] || ''} hover:bg-surface-100/50 dark:hover:bg-surface-800/30 transition-colors`}>
+                        <td className="px-3 py-2 align-top">
+                          {diag.values.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleDiagRow(idx)}
+                              aria-expanded={expandedDiagRows.has(idx)}
+                              aria-controls={`diag-details-${idx}`}
+                              aria-label={
+                                expandedDiagRows.has(idx)
+                                  ? tf('table.collapseDetails', { name: diag.name })
+                                  : tf('table.expandDetails', { name: diag.name })
+                              }
+                              className="inline-flex h-6 w-6 items-center justify-center rounded border border-surface-200 bg-white text-surface-500 transition-colors hover:border-brand-300 hover:text-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+                            >
+                              {expandedDiagRows.has(idx) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                            </button>
+                          ) : (
+                            <span aria-hidden="true" className="inline-block h-6 w-6" />
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-xs text-surface-700 dark:text-surface-300 whitespace-nowrap font-mono">{formatTime(diag.timestamp)}</td>
                         <td className="px-4 py-2 text-xs text-surface-600 dark:text-surface-400 font-mono">{diag.name}</td>
                         <td className={`px-4 py-2 text-xs font-medium whitespace-nowrap ${DIAGNOSTIC_LEVEL_COLORS[diag.level] || ''}`}>{DIAGNOSTIC_LEVEL_NAMES[diag.level] || String(diag.level)}</td>
@@ -775,15 +816,14 @@ function App() {
                           {diag.message}
                           {diag.values.length > 0 && (
                             <span className="ml-2 text-xs text-surface-400 inline-flex items-center gap-1">
-                              {expandedDiagRows.has(idx) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                              {diag.values.length} {t('table.values')}
+                              {tf('table.valuesCount', { count: diag.values.length })}
                             </span>
                           )}
                         </td>
                       </tr>
                       {expandedDiagRows.has(idx) && diag.values.length > 0 && (
-                        <tr key={`${idx}-values`} className="bg-surface-50 dark:bg-surface-800/30">
-                          <td colSpan={4} className="px-8 py-2">
+                        <tr key={`${idx}-values`} id={`diag-details-${idx}`} className="bg-surface-50 dark:bg-surface-800/30">
+                          <td colSpan={5} className="px-8 py-2">
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-xs font-mono">
                               {diag.values.map((v, vi) => (
                                 <div key={vi} className="flex gap-1">
@@ -802,10 +842,10 @@ function App() {
             </div>
             {filteredDiagnostics.length > previewLimit && (
               <div className="px-5 py-3 border-t border-surface-200 dark:border-surface-800 text-center text-xs text-surface-400">
-                {lang === 'ja'
-                  ? `${filteredDiagnostics.length.toLocaleString()} 件中 ${previewLimit} 件を表示中`
-                  : `Showing first ${previewLimit} of ${filteredDiagnostics.length.toLocaleString()} state changes`
-                }
+                {tf('table.preview.stateChanges', {
+                  shownCount: previewLimit,
+                  totalCount: filteredDiagnostics.length.toLocaleString(),
+                })}
               </div>
             )}
           </div>
