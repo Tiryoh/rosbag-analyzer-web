@@ -10,6 +10,7 @@ export default mergeConfig(
       outDir: 'dist-singlefile',
       sourcemap: false,
       cssCodeSplit: false,
+      assetsInlineLimit: 500000,
       rollupOptions: {
         output: {
           inlineDynamicImports: true,

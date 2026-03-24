@@ -17,6 +17,7 @@ import {
   filterDiagnostics,
 } from './rosbagUtils';
 import { useI18n } from './i18n';
+import logoUrl from './assets/logo.png';
 
 function App() {
   const { lang, setLang, t, tf } = useI18n();
@@ -310,7 +311,7 @@ function App() {
               </button>
             </div>
           </div>
-          <img src="/logo.png" alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
+          <img src={logoUrl} alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
           <h1 className="sr-only">ROSbag Analyzer</h1>
           <p className="text-surface-600 dark:text-surface-300 text-sm mx-auto leading-relaxed">
             {t('header.description')}
