@@ -1,0 +1,64 @@
+name: Release Asset
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  package-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Prepare standard release package
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          set -euxo pipefail
+          asset_name="rosbag-analyzer-${TAG_NAME}"
+          staging_dir="${RUNNER_TEMP}/${asset_name}"
+
+          rm -rf "${staging_dir}"
+          mkdir -p "${staging_dir}"
+          cp -a dist/. "${staging_dir}/"
+          mv "${staging_dir}/index.html" "${staging_dir}/rosbag-analyzer.html"
+
+          cd "${RUNNER_TEMP}"
+          zip -r "${asset_name}.zip" "${asset_name}"
+
+      - run: npm run build:singlefile
+
+      - name: Prepare single-file release package
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          set -euxo pipefail
+          asset_name="rosbag-analyzer-singlefile-${TAG_NAME}"
+          staging_dir="${RUNNER_TEMP}/${asset_name}"
+
+          rm -rf "${staging_dir}"
+          mkdir -p "${staging_dir}"
+          cp -a dist-singlefile/. "${staging_dir}/"
+          mv "${staging_dir}/index.html" "${staging_dir}/rosbag-analyzer.html"
+
+          cd "${RUNNER_TEMP}"
+          zip -r "${asset_name}.zip" "${asset_name}"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ runner.temp }}/rosbag-analyzer-${{ github.event.release.tag_name }}.zip
+            ${{ runner.temp }}/rosbag-analyzer-singlefile-${{ github.event.release.tag_name }}.zip
+          overwrite_files: true

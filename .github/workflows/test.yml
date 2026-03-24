@@ -7,6 +7,8 @@ on:
       - 'e2e/**'
       - 'playwright.config.ts'
       - 'vite.config.ts'
+      - 'vite.singlefile.config.ts'
+      - 'index.html'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/test.yml'
@@ -16,6 +18,8 @@ on:
       - 'e2e/**'
       - 'playwright.config.ts'
       - 'vite.config.ts'
+      - 'vite.singlefile.config.ts'
+      - 'index.html'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/test.yml'
@@ -48,6 +52,10 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [standard, singlefile]
     permissions:
       contents: read
     steps:
@@ -63,11 +71,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       - run: npm run test:e2e
+        if: matrix.variant == 'standard'
+
+      - run: npm run test:e2e:singlefile
+        if: matrix.variant == 'singlefile'
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
-          path: playwright-report/
+          name: playwright-report-${{ matrix.variant }}
+          path: ${{ matrix.variant == 'singlefile' && 'playwright-report-singlefile/' || 'playwright-report/' }}
           retention-days: 14
