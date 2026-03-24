@@ -170,8 +170,12 @@ function formatMessage(template: string, params: Record<string, string | number>
 }
 
 function detectLang(): Lang {
-  const stored = localStorage.getItem('lang');
-  if (stored === 'ja' || stored === 'en') return stored;
+  try {
+    const stored = localStorage.getItem('lang');
+    if (stored === 'ja' || stored === 'en') return stored;
+  } catch {
+    // localStorage may be unavailable in sandboxed iframes or strict privacy modes
+  }
   return navigator.language.startsWith('ja') ? 'ja' : 'en';
 }
 
@@ -184,7 +188,11 @@ export function useI18n() {
 
   const setLang = useCallback((newLang: Lang) => {
     setLangState(newLang);
-    localStorage.setItem('lang', newLang);
+    try {
+      localStorage.setItem('lang', newLang);
+    } catch {
+      // localStorage may be unavailable
+    }
     document.documentElement.lang = newLang;
   }, []);
 

@@ -330,7 +330,18 @@ function App() {
             }`}
             onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={() => setIsDragging(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setIsDragging(false);
+              const files = e.dataTransfer?.files;
+              if (!files || files.length === 0) return;
+              const fileInput = fileInputRef.current;
+              if (!fileInput || fileInput.disabled) return;
+              const dataTransfer = new DataTransfer();
+              dataTransfer.items.add(files[0]);
+              fileInput.files = dataTransfer.files;
+              handleFileUpload({ target: fileInput } as React.ChangeEvent<HTMLInputElement>);
+            }}
           >
             <div className="flex flex-col items-center justify-center py-6">
               <Upload className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-brand-500' : 'text-surface-400'}`} />
