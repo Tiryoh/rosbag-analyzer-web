@@ -6,10 +6,12 @@ export default mergeConfig(
   baseConfig,
   defineConfig({
     plugins: [viteSingleFile()],
+    publicDir: false,
     build: {
       outDir: 'dist-singlefile',
       sourcemap: false,
       cssCodeSplit: false,
+      assetsInlineLimit: 500000,
       rollupOptions: {
         output: {
           inlineDynamicImports: true,
