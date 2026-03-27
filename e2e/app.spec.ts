@@ -101,7 +101,7 @@ test.describe('Rosout filters', () => {
   });
 
   test('3-4: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('timeout');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('timeout');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2); // "Connection timeout" + "System watchdog timeout"
@@ -109,7 +109,7 @@ test.describe('Rosout filters', () => {
 
   test('3-5: regex filter', async ({ page }) => {
     await page.getByText('Regex').click();
-    await page.locator('input[type="text"]').fill('find.*path');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('find.*path');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1); // "Failed to find valid path"
@@ -234,7 +234,7 @@ test.describe('Rosout message table', () => {
 
   test('6-3: preview limit buttons', async ({ page }) => {
     // With 10 messages, all limits show the same count, but buttons exist
-    for (const n of ['100', '500', '1000']) {
+    for (const n of ['100', '500', '1,000']) {
       await expect(page.getByRole('button', { name: n, exact: true })).toBeVisible();
     }
   });
@@ -297,7 +297,7 @@ test.describe('Diagnostics tab', () => {
   });
 
   test('7-5: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('temperature');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('temperature');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1); // motor/left "High temperature"
@@ -349,7 +349,7 @@ test.describe('Diagnostics table', () => {
   });
 
   test('8-4: preview limit buttons', async ({ page }) => {
-    for (const n of ['100', '500', '1000']) {
+    for (const n of ['100', '500', '1,000']) {
       await expect(page.getByRole('button', { name: n, exact: true })).toBeVisible();
     }
   });

@@ -89,7 +89,7 @@ test.describe('MCAP rosout filters', () => {
   });
 
   test('M-3-3: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('timeout');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('timeout');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2); // "Connection timeout" + "System watchdog timeout"
@@ -97,7 +97,7 @@ test.describe('MCAP rosout filters', () => {
 
   test('M-3-4: regex filter', async ({ page }) => {
     await page.getByText('Regex').click();
-    await page.locator('input[type="text"]').fill('find.*path');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('find.*path');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1); // "Failed to find valid path"
@@ -187,7 +187,7 @@ test.describe('MCAP diagnostics', () => {
   });
 
   test('M-5-4: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('temperature');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('temperature');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1);

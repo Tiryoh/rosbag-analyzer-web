@@ -80,7 +80,7 @@ test.describe('MCAP.zstd rosout filters', () => {
   });
 
   test('MZ-3-3: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('timeout');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('timeout');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2);
