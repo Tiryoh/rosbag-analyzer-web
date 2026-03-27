@@ -17,6 +17,8 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 - ⚡ **Fast** - Powered by WebAssembly for native-like performance
 - 🔁 **Supported ROS versions** - ROS1 (`.bag`) and ROS2 MCAP (`.mcap`, `.mcap.zstd`). Both indexed and non-indexed (streaming) MCAP files are supported.
 
+![Screenshot](docs/screenshot.png)
+
 ## 🚀 Quick Start
 
 ### Option 1: Live Demo
