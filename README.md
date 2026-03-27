@@ -68,6 +68,9 @@ Download the latest release and open `index.html` in your browser.
 4. **Export Results**
    - Choose format: CSV (Excel compatible), JSON, TXT, or Parquet
    - Parquet exports can be queried with DuckDB, pandas, Polars, or any Parquet-compatible tool
+     ```bash
+     duckdb -c "SELECT * FROM 'rosout_export.parquet' WHERE severity = 'ERROR';"
+     ```
    - Download filtered results instantly
 
 ## 🛠️ Technology Stack
