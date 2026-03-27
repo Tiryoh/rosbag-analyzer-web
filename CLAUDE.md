@@ -18,7 +18,7 @@ Browser-based ROS1/ROS2 bag analyzer. Parses `.bag` files (ROS1) and `.mcap`/`.m
 
 Single-page React+TypeScript app using Vite and Tailwind CSS.
 
-- **`src/App.tsx`** — Monolithic UI component handling file upload (drag & drop), filtering, statistics, tab navigation (rosout vs diagnostics), and CSV/JSON/TXT export.
+- **`src/App.tsx`** — Monolithic UI component handling file upload (drag & drop), filtering, statistics, tab navigation (rosout vs diagnostics), and CSV/JSON/TXT/Parquet export.
 - **`src/rosbagUtils.ts`** — Core logic: bag file parsing (`loadRosbagMessages`), file format dispatch (`loadMessages`), message filtering (`filterMessages`, `filterDiagnostics`), and export functions. This is the main module to test.
 - **`src/mcapUtils.ts`** — MCAP file parsing (`loadMcapMessages`). Uses `@mcap/core` for reading, `@foxglove/rosmsg2-serialization` for CDR deserialization, and `fzstd` for zstd decompression.
 - **`src/types.ts`** — Shared types (`RosoutMessage`, `DiagnosticStatusEntry`, `FilterConfig`) with `SeverityLevel` string union type (`'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'`) and Tailwind color mappings.

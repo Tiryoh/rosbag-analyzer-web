@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import initSqlJs from 'sql.js';
-import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import { filterMessages, filterDiagnostics, exportToSQLite, exportDiagnosticsToSQLite } from './rosbagUtils';
+import { parquetReadObjects } from 'hyparquet';
+import { filterMessages, filterDiagnostics, exportToParquet, exportDiagnosticsToParquet } from './rosbagUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 
 // -- Test fixtures --
@@ -20,23 +19,6 @@ const diagEntries: DiagnosticStatusEntry[] = [
   { timestamp: 300, name: '/motor/left', level: 2, message: 'Error: overheating', values: [] },
   { timestamp: 400, name: '/motor/right', level: 3, message: 'Stale: no update', values: [] },
 ];
-
-function resolveNodeFilePath(fileUrl: URL): string {
-  if (fileUrl.protocol !== 'file:') {
-    return fileUrl.toString();
-  }
-
-  const pathname = decodeURIComponent(fileUrl.pathname);
-  return /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname;
-}
-
-const sqlPromise = initSqlJs({
-  locateFile: () => (
-    typeof window === 'undefined'
-      ? resolveNodeFilePath(new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url))
-      : sqlWasmUrl
-  ),
-});
 
 // ==================== filterMessages ====================
 
@@ -351,14 +333,14 @@ describe('filterDiagnostics', () => {
   });
 });
 
-// ==================== SQLite export ====================
+// ==================== Parquet export ====================
 
-describe('SQLite export', () => {
-  it('exports rosout messages to sqlite with expected schema and values', async () => {
-    const binary = await exportToSQLite([
+describe('Parquet export', () => {
+  it('exports rosout messages to parquet with expected columns and values', async () => {
+    const binary = exportToParquet([
       {
         timestamp: 123.456789,
-        node: '/node_sql',
+        node: '/node_pq',
         severity: 'ERROR',
         message: 'Error with, commas',
         file: '/tmp/test.cpp',
@@ -368,35 +350,24 @@ describe('SQLite export', () => {
       },
     ], 'utc');
 
-    const SQL = await sqlPromise;
-    const db = new SQL.Database(binary);
-    const schema = db.exec('PRAGMA table_info(rosout_logs)');
-    const rows = db.exec(`
-      SELECT timestamp, time_text, node, severity, message, file, line, function_name, topics_text
-      FROM rosout_logs
-    `);
+    const rows = await parquetReadObjects({ file: binary.buffer as ArrayBuffer }) as Record<string, unknown>[];
 
-    expect(schema[0].values.map(column => column[1])).toEqual([
-      'id',
-      'timestamp',
-      'time_text',
-      'node',
-      'severity',
-      'message',
-      'file',
-      'line',
-      'function_name',
-      'topics_text',
-    ]);
-    expect(rows[0].values).toEqual([
-      [123.456789, '1970-01-01 00:02:03.456 UTC', '/node_sql', 'ERROR', 'Error with, commas', '/tmp/test.cpp', 42, 'main', '/rosout;/alerts'],
-    ]);
-
-    db.close();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      timestamp: 123.456789,
+      time_text: '1970-01-01 00:02:03.456 UTC',
+      node: '/node_pq',
+      severity: 'ERROR',
+      message: 'Error with, commas',
+      file: '/tmp/test.cpp',
+      line: 42,
+      function_name: 'main',
+      topics_text: '/rosout;/alerts',
+    });
   });
 
-  it('exports diagnostics and diagnostic_values tables for sqlite', async () => {
-    const binary = await exportDiagnosticsToSQLite([
+  it('exports diagnostics to parquet with values_json column', async () => {
+    const binary = exportDiagnosticsToParquet([
       {
         timestamp: 200,
         name: '/sensor/camera',
@@ -416,28 +387,28 @@ describe('SQLite export', () => {
       },
     ], 'utc');
 
-    const SQL = await sqlPromise;
-    const db = new SQL.Database(binary);
-    const diagnosticsRows = db.exec(`
-      SELECT id, timestamp, time_text, name, level_code, level_name, message
-      FROM diagnostics
-      ORDER BY id
-    `);
-    const valueRows = db.exec(`
-      SELECT diagnostic_id, key, value
-      FROM diagnostic_values
-      ORDER BY diagnostic_id, id
-    `);
+    const rows = await parquetReadObjects({ file: binary.buffer as ArrayBuffer }) as Record<string, unknown>[];
 
-    expect(diagnosticsRows[0].values).toEqual([
-      [1, 200, '1970-01-01 00:03:20.000 UTC', '/sensor/camera', 1, 'WARN', 'Warning: low fps'],
-      [2, 201, '1970-01-01 00:03:21.000 UTC', '/sensor/lidar', 0, 'OK', 'OK'],
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      timestamp: 200,
+      time_text: '1970-01-01 00:03:20.000 UTC',
+      name: '/sensor/camera',
+      level_code: 1,
+      level_name: 'WARN',
+      message: 'Warning: low fps',
+    });
+    expect(JSON.parse(rows[0].values_json as string)).toEqual([
+      { key: 'fps', value: '12' },
+      { key: 'temperature', value: '76' },
     ]);
-    expect(valueRows[0].values).toEqual([
-      [1, 'fps', '12'],
-      [1, 'temperature', '76'],
-    ]);
-
-    db.close();
+    expect(rows[1]).toMatchObject({
+      timestamp: 201,
+      name: '/sensor/lidar',
+      level_code: 0,
+      level_name: 'OK',
+      message: 'OK',
+    });
+    expect(JSON.parse(rows[1].values_json as string)).toEqual([]);
   });
 });

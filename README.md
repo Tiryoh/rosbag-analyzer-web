@@ -12,7 +12,7 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 - 📦 **Drag & Drop** - Simply drag your .bag file to analyze
 - 🔍 **Advanced Filtering** - Filter by nodes, severity, keywords, or regex patterns
 - 📊 **Statistics** - Visual statistics and top node analysis
-- 💾 **Export** - Export filtered results to CSV, JSON, TXT, or SQLite
+- 💾 **Export** - Export filtered results to CSV, JSON, TXT, or Parquet
 - 🎨 **Modern UI** - Clean, responsive interface with dark mode support
 - ⚡ **Fast** - Powered by WebAssembly for native-like performance
 - 🔁 **Supported ROS versions** - ROS1 (`.bag`) and ROS2 MCAP (`.mcap`, `.mcap.zstd`). Both indexed and non-indexed (streaming) MCAP files are supported.
@@ -66,8 +66,8 @@ Download the latest release and open `index.html` in your browser.
    - Messages are color-coded by severity
 
 4. **Export Results**
-   - Choose format: CSV (Excel compatible), JSON, TXT, or SQLite
-   - SQLite exports can be queried locally with SQL tools such as `sqlite3` or DB Browser for SQLite
+   - Choose format: CSV (Excel compatible), JSON, TXT, or Parquet
+   - Parquet exports can be queried with DuckDB, pandas, Polars, or any Parquet-compatible tool
    - Download filtered results instantly
 
 ## 🛠️ Technology Stack
