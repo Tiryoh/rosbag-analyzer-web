@@ -1,9 +1,10 @@
 import { useRef, useState, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
-import { SEVERITY_NAMES, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
+import type { SeverityLevel } from './types';
+import { SEVERITY_LEVELS, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
 import {
-  loadRosbagMessages,
+  loadMessages,
   filterMessages,
   exportToCSV,
   exportToJSON,
@@ -29,7 +30,7 @@ function App() {
 
   // Filter states
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
-  const [selectedSeverities, setSelectedSeverities] = useState<Set<number>>(new Set());
+  const [selectedSeverities, setSelectedSeverities] = useState<Set<SeverityLevel>>(new Set());
   const [keywords, setKeywords] = useState('');
   const [regexPattern, setRegexPattern] = useState('');
   const [useRegex, setUseRegex] = useState(false);
@@ -72,9 +73,9 @@ function App() {
     setError('');
 
     try {
-      console.log('Calling loadRosbagMessages...');
-      const result = await loadRosbagMessages(file);
-      console.log('loadRosbagMessages completed successfully');
+      console.log('Calling loadMessages...');
+      const result = await loadMessages(file);
+      console.log('loadMessages completed successfully');
       console.log('Messages loaded:', result.messages.length);
       console.log('Unique nodes:', result.uniqueNodes.size);
       console.log('Diagnostics:', result.diagnostics.length, 'hasDiagnostics:', result.hasDiagnostics);
@@ -235,7 +236,7 @@ function App() {
     setSelectedNodes(newSet);
   };
 
-  const toggleSeverity = (severity: number) => {
+  const toggleSeverity = (severity: SeverityLevel) => {
     const newSet = new Set(selectedSeverities);
     if (newSet.has(severity)) {
       newSet.delete(severity);
@@ -246,7 +247,7 @@ function App() {
   };
 
   const getStatistics = () => {
-    const severityCount: Record<number, number> = {};
+    const severityCount: Record<SeverityLevel, number> = {} as Record<SeverityLevel, number>;
     const nodeCount: Record<string, number> = {};
 
     filteredMessages.forEach(msg => {
@@ -361,7 +362,7 @@ function App() {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".bag"
+              accept=".bag,.mcap,.mcap.zstd"
               onChange={handleFileUpload}
               disabled={loading}
               data-testid="bag-upload-input"
@@ -471,17 +472,17 @@ function App() {
                   {t('filter.severity')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(SEVERITY_NAMES).map(([level, name]) => (
+                  {SEVERITY_LEVELS.map((level) => (
                     <button
                       key={level}
-                      onClick={() => toggleSeverity(Number(level))}
+                      onClick={() => toggleSeverity(level)}
                       className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                        selectedSeverities.has(Number(level))
+                        selectedSeverities.has(level)
                           ? 'bg-brand-600 text-white shadow-sm'
                           : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'
                       }`}
                     >
-                      {name}
+                      {level}
                     </button>
                   ))}
                 </div>
@@ -576,7 +577,7 @@ function App() {
                   const percentage = ((count / filteredMessages.length) * 100).toFixed(1);
                   return (
                     <div key={level} className="flex justify-between items-center py-1.5">
-                      <span className={`text-sm font-medium ${SEVERITY_COLORS[Number(level)]}`}>{SEVERITY_NAMES[Number(level)]}</span>
+                      <span className={`text-sm font-medium ${SEVERITY_COLORS[level as SeverityLevel]}`}>{level}</span>
                       <div className="flex items-center gap-3">
                         <div className="w-24 h-1.5 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
                           <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${percentage}%` }} />
@@ -664,7 +665,7 @@ function App() {
                     <tr key={idx} className={`${SEVERITY_BG_COLORS[msg.severity]} hover:bg-surface-100/50 dark:hover:bg-surface-800/30 transition-colors`}>
                       <td className="px-4 py-2 text-xs text-surface-700 dark:text-surface-300 whitespace-nowrap font-mono">{formatTime(msg.timestamp)}</td>
                       <td className="px-4 py-2 text-xs text-surface-600 dark:text-surface-400 whitespace-nowrap font-mono">{msg.node}</td>
-                      <td className={`px-4 py-2 text-xs font-medium whitespace-nowrap ${SEVERITY_COLORS[msg.severity]}`}>{SEVERITY_NAMES[msg.severity]}</td>
+                      <td className={`px-4 py-2 text-xs font-medium whitespace-nowrap ${SEVERITY_COLORS[msg.severity]}`}>{msg.severity}</td>
                       <td className="px-4 py-2 text-xs text-surface-800 dark:text-surface-200">{msg.message}</td>
                     </tr>
                   ))}

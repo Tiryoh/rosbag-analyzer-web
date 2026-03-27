@@ -11,7 +11,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // File upload
     'upload.click': 'Click to upload',
     'upload.dragDrop': 'or drag and drop',
-    'upload.fileType': 'ROSbag file (.bag)',
+    'upload.fileType': 'ROSbag / MCAP file (.bag, .mcap, .mcap.zstd)',
 
     // Loading / Error
     'loading.message': 'Loading bag file...',
@@ -90,7 +90,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // File upload
     'upload.click': 'ファイルを選択',
     'upload.dragDrop': 'またはドラッグ＆ドロップ',
-    'upload.fileType': 'ROSbag ファイル (.bag)',
+    'upload.fileType': 'ROSbag / MCAP ファイル (.bag, .mcap, .mcap.zstd)',
 
     // Loading / Error
     'loading.message': '読み込み中...',

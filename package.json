@@ -17,6 +17,10 @@
   },
   "dependencies": {
     "@foxglove/rosbag": "^0.4.1",
+    "@foxglove/rosmsg": "^5.0.5",
+    "@foxglove/rosmsg2-serialization": "^3.0.3",
+    "@mcap/core": "^2.2.0",
+    "fzstd": "^0.1.1",
     "lucide-react": "^0.294.0",
     "lz4js": "^0.2.0",
     "react": "^18.2.0",

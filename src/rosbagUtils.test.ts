@@ -2,16 +2,16 @@ import { describe, it, expect } from 'vitest';
 import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { filterMessages, filterDiagnostics, exportToSQLite, exportDiagnosticsToSQLite } from './rosbagUtils';
-import type { RosoutMessage, DiagnosticStatusEntry } from './types';
+import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 
 // -- Test fixtures --
 
 const rosoutMessages: RosoutMessage[] = [
-  { timestamp: 100, node: '/node_a', severity: 1, message: 'debug info here' },
-  { timestamp: 200, node: '/node_a', severity: 2, message: 'all systems go' },
-  { timestamp: 300, node: '/node_b', severity: 4, message: 'Warning: low battery' },
-  { timestamp: 400, node: '/node_b', severity: 8, message: 'Error: connection lost' },
-  { timestamp: 500, node: '/node_c', severity: 16, message: 'FATAL crash detected' },
+  { timestamp: 100, node: '/node_a', severity: 'DEBUG', message: 'debug info here' },
+  { timestamp: 200, node: '/node_a', severity: 'INFO', message: 'all systems go' },
+  { timestamp: 300, node: '/node_b', severity: 'WARN', message: 'Warning: low battery' },
+  { timestamp: 400, node: '/node_b', severity: 'ERROR', message: 'Error: connection lost' },
+  { timestamp: 500, node: '/node_c', severity: 'FATAL', message: 'FATAL crash detected' },
 ];
 
 const diagEntries: DiagnosticStatusEntry[] = [
@@ -52,16 +52,16 @@ describe('filterMessages', () => {
   // -- Severity --
 
   it('filters by single severity', () => {
-    const result = filterMessages(rosoutMessages, { severityLevels: new Set([2]) });
+    const result = filterMessages(rosoutMessages, { severityLevels: new Set<SeverityLevel>(['INFO']) });
     expect(result).toHaveLength(1);
     expect(result[0].node).toBe('/node_a');
-    expect(result[0].severity).toBe(2);
+    expect(result[0].severity).toBe('INFO');
   });
 
   it('filters by multiple severities', () => {
-    const result = filterMessages(rosoutMessages, { severityLevels: new Set([4, 8]) });
+    const result = filterMessages(rosoutMessages, { severityLevels: new Set<SeverityLevel>(['WARN', 'ERROR']) });
     expect(result).toHaveLength(2);
-    expect(result.every(m => [4, 8].includes(m.severity))).toBe(true);
+    expect(result.every(m => ['WARN', 'ERROR'].includes(m.severity))).toBe(true);
   });
 
   it('empty severity set returns all', () => {
@@ -129,7 +129,7 @@ describe('filterMessages', () => {
       messageRegex: 'error.*lost',
     });
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe(8);
+    expect(result[0].severity).toBe('ERROR');
   });
 
   it('regex is case insensitive', () => {
@@ -184,7 +184,7 @@ describe('filterMessages', () => {
   it('OR mode: matches if any condition is true', () => {
     const result = filterMessages(rosoutMessages, {
       filterMode: 'OR',
-      severityLevels: new Set([1]),  // matches msg at t=100
+      severityLevels: new Set<SeverityLevel>(['DEBUG']),  // matches msg at t=100
       nodeNames: new Set(['/node_c']), // matches msg at t=500
     });
     expect(result).toHaveLength(2);
@@ -195,7 +195,7 @@ describe('filterMessages', () => {
   it('AND mode: matches only if all conditions are true', () => {
     const result = filterMessages(rosoutMessages, {
       filterMode: 'AND',
-      severityLevels: new Set([4, 8]),
+      severityLevels: new Set<SeverityLevel>(['WARN', 'ERROR']),
       nodeNames: new Set(['/node_b']),
     });
     expect(result).toHaveLength(2);
@@ -204,8 +204,8 @@ describe('filterMessages', () => {
   it('AND mode: no match when conditions conflict', () => {
     const result = filterMessages(rosoutMessages, {
       filterMode: 'AND',
-      severityLevels: new Set([1]),  // only /node_a
-      nodeNames: new Set(['/node_c']), // only severity 16
+      severityLevels: new Set<SeverityLevel>(['DEBUG']),  // only /node_a
+      nodeNames: new Set(['/node_c']), // only severity FATAL
     });
     expect(result).toHaveLength(0);
   });
@@ -215,18 +215,18 @@ describe('filterMessages', () => {
   it('AND mode with severity + keyword', () => {
     const result = filterMessages(rosoutMessages, {
       filterMode: 'AND',
-      severityLevels: new Set([4, 8]),
+      severityLevels: new Set<SeverityLevel>(['WARN', 'ERROR']),
       useRegex: false,
       messageKeywords: ['battery'],
     });
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe(4);
+    expect(result[0].severity).toBe('WARN');
   });
 
   it('time range combined with other filters', () => {
     const result = filterMessages(rosoutMessages, {
       filterMode: 'OR',
-      severityLevels: new Set([16]),
+      severityLevels: new Set<SeverityLevel>(['FATAL']),
       startTime: 100,
       endTime: 300,
     });
@@ -359,7 +359,7 @@ describe('SQLite export', () => {
       {
         timestamp: 123.456789,
         node: '/node_sql',
-        severity: 8,
+        severity: 'ERROR',
         message: 'Error with, commas',
         file: '/tmp/test.cpp',
         line: 42,
@@ -372,7 +372,7 @@ describe('SQLite export', () => {
     const db = new SQL.Database(binary);
     const schema = db.exec('PRAGMA table_info(rosout_logs)');
     const rows = db.exec(`
-      SELECT timestamp, time_text, node, severity_code, severity_name, message, file, line, function_name, topics_text
+      SELECT timestamp, time_text, node, severity, message, file, line, function_name, topics_text
       FROM rosout_logs
     `);
 
@@ -381,8 +381,7 @@ describe('SQLite export', () => {
       'timestamp',
       'time_text',
       'node',
-      'severity_code',
-      'severity_name',
+      'severity',
       'message',
       'file',
       'line',
@@ -390,7 +389,7 @@ describe('SQLite export', () => {
       'topics_text',
     ]);
     expect(rows[0].values).toEqual([
-      [123.456789, '1970-01-01 00:02:03.456 UTC', '/node_sql', 8, 'ERROR', 'Error with, commas', '/tmp/test.cpp', 42, 'main', '/rosout;/alerts'],
+      [123.456789, '1970-01-01 00:02:03.456 UTC', '/node_sql', 'ERROR', 'Error with, commas', '/tmp/test.cpp', 42, 'main', '/rosout;/alerts'],
     ]);
 
     db.close();

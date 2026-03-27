@@ -43,14 +43,14 @@ test.describe('SQLite export', () => {
 
     const db = await openDownloadedDatabase(download);
     const rows = db.exec(`
-      SELECT node, severity_code, severity_name, message
+      SELECT node, severity, message
       FROM rosout_logs
       ORDER BY id
     `);
 
     expect(rows[0].values).toEqual([
-      ['/planner/global', 8, 'ERROR', 'Failed to find valid path'],
-      ['/sensor/lidar', 8, 'ERROR', 'Connection timeout'],
+      ['/planner/global', 'ERROR', 'Failed to find valid path'],
+      ['/sensor/lidar', 'ERROR', 'Connection timeout'],
     ]);
     db.close();
   });

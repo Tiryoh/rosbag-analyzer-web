@@ -5,8 +5,8 @@ import lz4 from 'lz4js';
 import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import type { RosoutMessage, DiagnosticStatusEntry } from './types';
-import { DIAGNOSTIC_LEVEL_NAMES, SEVERITY_NAMES } from './types';
+import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
 type Timezone = 'local' | 'utc';
 
@@ -196,7 +196,7 @@ export async function loadRosbagMessages(file: File): Promise<{
             const rosoutMsg: RosoutMessage = {
               timestamp: result.timestamp.sec + result.timestamp.nsec / 1e9,
               node: msg.name || 'unknown',
-              severity: msg.level,
+              severity: ROS1_SEVERITY[msg.level] ?? 'DEBUG',
               message: msg.msg,
               file: msg.file || '',
               line: msg.line || 0,
@@ -264,7 +264,7 @@ export function filterMessages(
   messages: RosoutMessage[],
   filters: {
     nodeNames?: Set<string>;
-    severityLevels?: Set<number>;
+    severityLevels?: Set<SeverityLevel>;
     messageKeywords?: string[];
     messageRegex?: string;
     filterMode?: 'OR' | 'AND';
@@ -398,7 +398,7 @@ export function exportToCSV(messages: RosoutMessage[], timezone: Timezone = 'loc
     msg.timestamp.toFixed(6),
     formatTimestamp(msg.timestamp, timezone),
     escapeCSV(msg.node),
-    SEVERITY_NAMES[msg.severity] || String(msg.severity),
+    msg.severity,
     escapeCSV(msg.message),
     escapeCSV(msg.file || ''),
     String(msg.line || 0),
@@ -413,7 +413,7 @@ export function exportToJSON(messages: RosoutMessage[], timezone: Timezone = 'lo
     timestamp: msg.timestamp,
     time: formatTimestamp(msg.timestamp, timezone),
     node: msg.node,
-    severity: SEVERITY_NAMES[msg.severity] || msg.severity,
+    severity: msg.severity,
     message: msg.message,
     file: msg.file || '',
     line: msg.line || 0,
@@ -426,9 +426,8 @@ export function exportToJSON(messages: RosoutMessage[], timezone: Timezone = 'lo
 export function exportToTXT(messages: RosoutMessage[], timezone: Timezone = 'local'): string {
   return messages.map(msg => {
     const time = formatTimestamp(msg.timestamp, timezone);
-    const severity = SEVERITY_NAMES[msg.severity] || String(msg.severity);
     const location = msg.file ? `${msg.file}:${msg.line || 0}` : '';
-    let line = `[${time}] [${severity}] [${msg.node}]: ${msg.message}`;
+    let line = `[${time}] [${msg.severity}] [${msg.node}]: ${msg.message}`;
     if (location) line += ` (${location})`;
     return line;
   }).join('\n');
@@ -481,8 +480,7 @@ export async function exportToSQLite(messages: RosoutMessage[], timezone: Timezo
       timestamp REAL NOT NULL,
       time_text TEXT NOT NULL,
       node TEXT NOT NULL,
-      severity_code INTEGER NOT NULL,
-      severity_name TEXT NOT NULL,
+      severity TEXT NOT NULL,
       message TEXT NOT NULL,
       file TEXT NOT NULL,
       line INTEGER NOT NULL,
@@ -493,8 +491,8 @@ export async function exportToSQLite(messages: RosoutMessage[], timezone: Timezo
 
   const insert = db.prepare(`
     INSERT INTO rosout_logs (
-      timestamp, time_text, node, severity_code, severity_name, message, file, line, function_name, topics_text
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      timestamp, time_text, node, severity, message, file, line, function_name, topics_text
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let binary: Uint8Array;
@@ -507,7 +505,6 @@ export async function exportToSQLite(messages: RosoutMessage[], timezone: Timezo
           formatTimestamp(msg.timestamp, timezone),
           msg.node,
           msg.severity,
-          SEVERITY_NAMES[msg.severity] || String(msg.severity),
           msg.message,
           msg.file || '',
           msg.line || 0,
@@ -611,6 +608,20 @@ export async function exportDiagnosticsToSQLite(
   }
 
   return binary;
+}
+
+export async function loadMessages(file: File): Promise<{
+  messages: RosoutMessage[];
+  uniqueNodes: Set<string>;
+  diagnostics: DiagnosticStatusEntry[];
+  hasDiagnostics: boolean;
+}> {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
+    const { loadMcapMessages } = await import('./mcapUtils');
+    return loadMcapMessages(file);
+  }
+  return loadRosbagMessages(file);
 }
 
 export function downloadFile(content: string | Uint8Array, filename: string, type: string) {

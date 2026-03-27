@@ -1,7 +1,9 @@
+export type SeverityLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'UNKNOWN';
+
 export interface RosoutMessage {
   timestamp: number;
   node: string;
-  severity: number;
+  severity: SeverityLevel;
   message: string;
   file?: string;
   line?: number;
@@ -11,14 +13,15 @@ export interface RosoutMessage {
 
 export interface FilterConfig {
   nodeNames: Set<string>;
-  severityLevels: Set<number>;
+  severityLevels: Set<SeverityLevel>;
   messageKeywords: string[];
   messageRegex: string;
   filterMode: 'OR' | 'AND';
   useRegex: boolean;
 }
 
-export const SEVERITY_NAMES: Record<number, string> = {
+// ROS1 numeric severity → SeverityLevel
+export const ROS1_SEVERITY: Record<number, SeverityLevel> = {
   1: 'DEBUG',
   2: 'INFO',
   4: 'WARN',
@@ -26,20 +29,33 @@ export const SEVERITY_NAMES: Record<number, string> = {
   16: 'FATAL',
 };
 
-export const SEVERITY_COLORS: Record<number, string> = {
-  1: 'text-surface-400',
-  2: 'text-emerald-600 dark:text-emerald-400',
-  4: 'text-amber-600 dark:text-amber-400',
-  8: 'text-red-600 dark:text-red-400',
-  16: 'text-red-700 dark:text-red-300 font-bold',
+// ROS2 numeric severity → SeverityLevel
+export const ROS2_SEVERITY: Record<number, SeverityLevel> = {
+  10: 'DEBUG',
+  20: 'INFO',
+  30: 'WARN',
+  40: 'ERROR',
+  50: 'FATAL',
 };
 
-export const SEVERITY_BG_COLORS: Record<number, string> = {
-  1: 'bg-surface-100/50 dark:bg-surface-800/30',
-  2: 'bg-emerald-50 dark:bg-emerald-950/30',
-  4: 'bg-amber-50 dark:bg-amber-950/30',
-  8: 'bg-red-50 dark:bg-red-950/30',
-  16: 'bg-red-100 dark:bg-red-950/50',
+export const SEVERITY_LEVELS: SeverityLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'UNKNOWN'];
+
+export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
+  'DEBUG': 'text-surface-400',
+  'INFO': 'text-emerald-600 dark:text-emerald-400',
+  'WARN': 'text-amber-600 dark:text-amber-400',
+  'ERROR': 'text-red-600 dark:text-red-400',
+  'FATAL': 'text-red-700 dark:text-red-300 font-bold',
+  'UNKNOWN': 'text-surface-500 dark:text-surface-400 italic',
+};
+
+export const SEVERITY_BG_COLORS: Record<SeverityLevel, string> = {
+  'DEBUG': 'bg-surface-100/50 dark:bg-surface-800/30',
+  'INFO': 'bg-emerald-50 dark:bg-emerald-950/30',
+  'WARN': 'bg-amber-50 dark:bg-amber-950/30',
+  'ERROR': 'bg-red-50 dark:bg-red-950/30',
+  'FATAL': 'bg-red-100 dark:bg-red-950/50',
+  'UNKNOWN': 'bg-surface-100/50 dark:bg-surface-800/30',
 };
 
 // Diagnostics types

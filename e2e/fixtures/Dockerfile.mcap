@@ -1,0 +1,11 @@
+FROM ros:jazzy-ros-base
+
+RUN apt-get update -qq && \
+    apt-get install -y -qq python3-pip zstd ros-jazzy-rcl-interfaces ros-jazzy-diagnostic-msgs > /dev/null 2>&1 && \
+    pip install --break-system-packages mcap mcap-ros2-support && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+COPY generate_test_mcap.py .
+SHELL ["/bin/bash", "-c"]
+CMD ["bash", "-c", "source /opt/ros/jazzy/setup.bash && python3 generate_test_mcap.py"]

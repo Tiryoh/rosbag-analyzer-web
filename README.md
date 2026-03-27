@@ -15,7 +15,7 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 - 💾 **Export** - Export filtered results to CSV, JSON, TXT, or SQLite
 - 🎨 **Modern UI** - Clean, responsive interface with dark mode support
 - ⚡ **Fast** - Powered by WebAssembly for native-like performance
-- 🔁 **Supported ROS versions** - Currently supports ROS1 (rosbag). ROS2 (rosbag2) support is TODO.
+- 🔁 **Supported ROS versions** - ROS1 (`.bag`) and ROS2 MCAP (`.mcap`, `.mcap.zstd`). Both indexed and non-indexed (streaming) MCAP files are supported.
 
 ## 🚀 Quick Start
 
@@ -50,8 +50,8 @@ Download the latest release and open `index.html` in your browser.
 ## 📋 How to Use
 
 1. **Upload ROSbag File**
-   - Click the upload area or drag & drop your .bag file
-   - The tool will automatically detect rosout topics
+   - Click the upload area or drag & drop your `.bag`, `.mcap`, or `.mcap.zstd` file
+   - The tool will automatically detect rosout and diagnostics topics
 
 2. **Apply Filters**
    - Select filter mode (OR/AND)
@@ -75,6 +75,8 @@ Download the latest release and open `index.html` in your browser.
 - **React + TypeScript** - Modern UI framework with type safety
 - **Vite** - Lightning-fast build tool
 - **@foxglove/rosbag** - ROSbag parser compiled to WebAssembly
+- **@mcap/core** - MCAP file reader (indexed & streaming)
+- **fzstd** - Zstandard decompression for `.mcap.zstd` files
 - **Tailwind CSS** - Utility-first styling
 - **Lucide Icons** - Beautiful icon set
 
