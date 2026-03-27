@@ -341,9 +341,19 @@ export function filterDiagnostics(
     messageRegex?: string;
     filterMode?: 'OR' | 'AND';
     useRegex?: boolean;
+    startTime?: number;
+    endTime?: number;
   }
 ): DiagnosticStatusEntry[] {
   return diagnostics.filter(d => {
+    // Time range filters (hard filters, not subject to OR/AND)
+    if (filters.startTime !== undefined && d.timestamp < filters.startTime) {
+      return false;
+    }
+    if (filters.endTime !== undefined && d.timestamp > filters.endTime) {
+      return false;
+    }
+
     const conditions: boolean[] = [];
 
     if (filters.levels && filters.levels.size > 0) {
