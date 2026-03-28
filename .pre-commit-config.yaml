@@ -1,15 +1,15 @@
 repos:
-  - repo: local
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
     hooks:
       - id: gitleaks
-        name: Gitleaks
-        entry: gitleaks git --pre-commit --redact --staged
+        stages: [pre-commit, pre-push]
+  - repo: local
+    hooks:
+      - id: npm-lint
+        name: ESLint
+        entry: npm run lint
         language: system
         pass_filenames: false
         stages: [pre-commit]
-      - id: gitleaks-push
-        name: Gitleaks (pre-push)
-        entry: gitleaks git --pre-commit --redact
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
+        types_or: [ts, tsx]
