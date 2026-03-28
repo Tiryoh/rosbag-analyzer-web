@@ -9,11 +9,11 @@ import {
   exportToCSV,
   exportToJSON,
   exportToTXT,
-  exportToSQLite,
+  exportToParquet,
   exportDiagnosticsToCSV,
   exportDiagnosticsToJSON,
   exportDiagnosticsToTXT,
-  exportDiagnosticsToSQLite,
+  exportDiagnosticsToParquet,
   downloadFile,
   filterDiagnostics,
 } from './rosbagUtils';
@@ -138,7 +138,7 @@ function App() {
     setFilteredMessages(filtered);
   };
 
-  const handleExport = async (format: 'csv' | 'json' | 'txt' | 'sqlite') => {
+  const handleExport = async (format: 'csv' | 'json' | 'txt' | 'parquet') => {
     try {
       setError('');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -175,10 +175,10 @@ function App() {
             filename = `${prefix}_${timestamp}.txt`;
             type = 'text/plain';
             break;
-          case 'sqlite':
-            content = await exportDiagnosticsToSQLite(exportData, timezone);
-            filename = `${prefix}_${timestamp}.sqlite`;
-            type = 'application/vnd.sqlite3';
+          case 'parquet':
+            content = exportDiagnosticsToParquet(exportData, timezone);
+            filename = `${prefix}_${timestamp}.parquet`;
+            type = 'application/vnd.apache.parquet';
             break;
           default: {
             const exhaustiveFormat: never = format;
@@ -213,10 +213,10 @@ function App() {
             filename = `rosout_export_${timestamp}.txt`;
             type = 'text/plain';
             break;
-          case 'sqlite':
-            content = await exportToSQLite(exportData, timezone);
-            filename = `rosout_export_${timestamp}.sqlite`;
-            type = 'application/vnd.sqlite3';
+          case 'parquet':
+            content = exportToParquet(exportData, timezone);
+            filename = `rosout_export_${timestamp}.parquet`;
+            type = 'application/vnd.apache.parquet';
             break;
           default: {
             const exhaustiveFormat: never = format;
@@ -829,11 +829,11 @@ function App() {
                   <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
                   <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
                   <button
-                    onClick={() => handleExport('sqlite')}
-                    data-testid="export-rosout-sqlite"
+                    onClick={() => handleExport('parquet')}
+                    data-testid="export-rosout-parquet"
                     className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
                   >
-                    SQLite
+                    Parquet
                   </button>
                 </div>
               </div>
@@ -1105,11 +1105,11 @@ function App() {
                   <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
                   <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
                   <button
-                    onClick={() => handleExport('sqlite')}
-                    data-testid="export-diagnostics-sqlite"
+                    onClick={() => handleExport('parquet')}
+                    data-testid="export-diagnostics-parquet"
                     className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
                   >
-                    SQLite
+                    Parquet
                   </button>
                 </div>
               </div>

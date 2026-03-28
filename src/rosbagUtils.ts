@@ -2,9 +2,7 @@ import Bag from '@foxglove/rosbag/dist/cjs/Bag';
 import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
 import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
-import initSqlJs from 'sql.js';
-import type { SqlJsStatic } from 'sql.js';
-import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
@@ -50,31 +48,6 @@ type ReadMessageResult<T> = {
   message: T;
   timestamp: BagTimestamp;
 };
-
-let sqlJsPromise: Promise<SqlJsStatic> | null = null;
-
-function resolveNodeFilePath(fileUrl: URL): string {
-  if (fileUrl.protocol !== 'file:') {
-    return fileUrl.toString();
-  }
-
-  const pathname = decodeURIComponent(fileUrl.pathname);
-  return /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname;
-}
-
-const resolvedSqlWasmUrl =
-  typeof window === 'undefined'
-    ? resolveNodeFilePath(new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url))
-    : sqlWasmUrl;
-
-async function getSqlJs(): Promise<SqlJsStatic> {
-  if (!sqlJsPromise) {
-    sqlJsPromise = initSqlJs({
-      locateFile: () => resolvedSqlWasmUrl,
-    });
-  }
-  return sqlJsPromise;
-}
 
 export async function loadRosbagMessages(file: File): Promise<{
   messages: RosoutMessage[];
@@ -480,144 +453,39 @@ export function exportDiagnosticsToTXT(diagnostics: DiagnosticStatusEntry[], tim
   }).join('\n');
 }
 
-export async function exportToSQLite(messages: RosoutMessage[], timezone: Timezone = 'local'): Promise<Uint8Array> {
-  const SQL = await getSqlJs();
-  const db = new SQL.Database();
-
-  db.run(`
-    CREATE TABLE rosout_logs (
-      id INTEGER PRIMARY KEY,
-      timestamp REAL NOT NULL,
-      time_text TEXT NOT NULL,
-      node TEXT NOT NULL,
-      severity TEXT NOT NULL,
-      message TEXT NOT NULL,
-      file TEXT NOT NULL,
-      line INTEGER NOT NULL,
-      function_name TEXT NOT NULL,
-      topics_text TEXT NOT NULL
-    );
-  `);
-
-  const insert = db.prepare(`
-    INSERT INTO rosout_logs (
-      timestamp, time_text, node, severity, message, file, line, function_name, topics_text
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  let binary: Uint8Array;
-  try {
-    db.run('BEGIN TRANSACTION');
-    try {
-      for (const msg of messages) {
-        insert.run([
-          msg.timestamp,
-          formatTimestamp(msg.timestamp, timezone),
-          msg.node,
-          msg.severity,
-          msg.message,
-          msg.file || '',
-          msg.line || 0,
-          msg.function || '',
-          (msg.topics || []).join(';'),
-        ]);
-        insert.reset();
-      }
-      db.run('COMMIT');
-    } catch (error) {
-      db.run('ROLLBACK');
-      throw error;
-    }
-
-    binary = db.export();
-  } finally {
-    insert.free();
-    db.close();
-  }
-
-  return binary;
+export function exportToParquet(messages: RosoutMessage[], timezone: Timezone = 'local'): Uint8Array {
+  const buf = parquetWriteBuffer({
+    columnData: [
+      { name: 'timestamp', data: messages.map(m => m.timestamp), type: 'DOUBLE' },
+      { name: 'time_text', data: messages.map(m => formatTimestamp(m.timestamp, timezone)), type: 'STRING' },
+      { name: 'node', data: messages.map(m => m.node), type: 'STRING' },
+      { name: 'severity', data: messages.map(m => m.severity), type: 'STRING' },
+      { name: 'message', data: messages.map(m => m.message), type: 'STRING' },
+      { name: 'file', data: messages.map(m => m.file || ''), type: 'STRING' },
+      { name: 'line', data: messages.map(m => m.line || 0), type: 'INT32' },
+      { name: 'function_name', data: messages.map(m => m.function || ''), type: 'STRING' },
+      { name: 'topics_text', data: messages.map(m => (m.topics || []).join(';')), type: 'STRING' },
+    ],
+  });
+  return new Uint8Array(buf);
 }
 
-export async function exportDiagnosticsToSQLite(
+export function exportDiagnosticsToParquet(
   diagnostics: DiagnosticStatusEntry[],
   timezone: Timezone = 'local'
-): Promise<Uint8Array> {
-  const SQL = await getSqlJs();
-  const db = new SQL.Database();
-
-  db.run(`
-    CREATE TABLE diagnostics (
-      id INTEGER PRIMARY KEY,
-      timestamp REAL NOT NULL,
-      time_text TEXT NOT NULL,
-      name TEXT NOT NULL,
-      level_code INTEGER NOT NULL,
-      level_name TEXT NOT NULL,
-      message TEXT NOT NULL
-    );
-
-    CREATE TABLE diagnostic_values (
-      id INTEGER PRIMARY KEY,
-      diagnostic_id INTEGER NOT NULL,
-      key TEXT NOT NULL,
-      value TEXT NOT NULL,
-      FOREIGN KEY (diagnostic_id) REFERENCES diagnostics(id)
-    );
-  `);
-
-  const insertDiagnostic = db.prepare(`
-    INSERT INTO diagnostics (
-      timestamp, time_text, name, level_code, level_name, message
-    ) VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  const insertValue = db.prepare(`
-    INSERT INTO diagnostic_values (diagnostic_id, key, value)
-    VALUES (?, ?, ?)
-  `);
-  const selectLastInsertRowId = db.prepare('SELECT last_insert_rowid()');
-
-  let binary: Uint8Array;
-  try {
-    db.run('BEGIN TRANSACTION');
-    try {
-      for (const diagnostic of diagnostics) {
-        insertDiagnostic.run([
-          diagnostic.timestamp,
-          formatTimestamp(diagnostic.timestamp, timezone),
-          diagnostic.name,
-          diagnostic.level,
-          DIAGNOSTIC_LEVEL_NAMES[diagnostic.level] || String(diagnostic.level),
-          diagnostic.message,
-        ]);
-        insertDiagnostic.reset();
-
-        if (!selectLastInsertRowId.step()) {
-          throw new Error('Failed to read last_insert_rowid()');
-        }
-        const [diagnosticIdValue] = selectLastInsertRowId.get();
-        const diagnosticId = Number(diagnosticIdValue);
-        selectLastInsertRowId.reset();
-
-        for (const entry of diagnostic.values) {
-          insertValue.run([diagnosticId, entry.key, entry.value]);
-          insertValue.reset();
-        }
-      }
-      db.run('COMMIT');
-    } catch (error) {
-      db.run('ROLLBACK');
-      throw error;
-    }
-
-    binary = db.export();
-  } finally {
-    selectLastInsertRowId.free();
-    insertDiagnostic.free();
-    insertValue.free();
-    db.close();
-  }
-
-  return binary;
+): Uint8Array {
+  const buf = parquetWriteBuffer({
+    columnData: [
+      { name: 'timestamp', data: diagnostics.map(d => d.timestamp), type: 'DOUBLE' },
+      { name: 'time_text', data: diagnostics.map(d => formatTimestamp(d.timestamp, timezone)), type: 'STRING' },
+      { name: 'name', data: diagnostics.map(d => d.name), type: 'STRING' },
+      { name: 'level_code', data: diagnostics.map(d => d.level), type: 'INT32' },
+      { name: 'level_name', data: diagnostics.map(d => DIAGNOSTIC_LEVEL_NAMES[d.level] || String(d.level)), type: 'STRING' },
+      { name: 'message', data: diagnostics.map(d => d.message), type: 'STRING' },
+      { name: 'values_json', data: diagnostics.map(d => d.values), type: 'JSON' },
+    ],
+  });
+  return new Uint8Array(buf);
 }
 
 export async function loadMessages(file: File): Promise<{
