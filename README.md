@@ -89,7 +89,7 @@ The built files will be in `dist/` folder. You can serve them with any static we
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22+ and npm
 
 ### Available Scripts
 

@@ -1,0 +1,53 @@
+name: Feature Request / 機能追加リクエスト
+description: Suggest a new feature or improvement / 新機能や改善の提案
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your suggestion! Please note that feature requests are reviewed by the maintainer and may or may not be accepted.
+        ご提案ありがとうございます! 機能追加リクエストはメンテナが確認し、受け入れるかどうかを判断します。
+
+        > **Security issues:** Please do not report security vulnerabilities here. Use [GitHub's private vulnerability reporting](https://github.com/Tiryoh/rosbag-analyzer-web/security) instead.
+        >
+        > **セキュリティに関する報告:** セキュリティ上の脆弱性はここでは報告しないでください。[GitHub のプライベート脆弱性報告機能](https://github.com/Tiryoh/rosbag-analyzer-web/security) をご利用ください。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description / 説明
+      description: |
+        A clear description of the feature you'd like.
+        追加してほしい機能を分かりやすく説明してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / 動機
+      description: |
+        Why do you want this feature? What problem does it solve?
+        なぜこの機能が必要ですか? どんな問題を解決しますか?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered / 検討した代替案
+      description: |
+        Any alternative solutions or workarounds you've considered.
+        検討した代替案や回避策があれば記載してください。
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context / 補足情報
+      description: |
+        Any other context, screenshots, or references.
+        その他の補足情報、スクリーンショット、参考情報など。
+    validations:
+      required: false

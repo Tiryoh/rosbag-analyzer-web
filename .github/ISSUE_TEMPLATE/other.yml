@@ -1,0 +1,18 @@
+name: Other / その他
+description: Questions, discussions, or anything else / 質問、相談、その他
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For topics that don't fit bug reports or feature requests.
+        バグ報告や機能追加リクエストに当てはまらない内容はこちらからどうぞ。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description / 説明
+      description: |
+        Describe what you'd like to discuss.
+        内容を説明してください。
+    validations:
+      required: true
