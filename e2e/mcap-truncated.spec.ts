@@ -13,15 +13,13 @@ async function uploadTruncatedMcap(page: import('@playwright/test').Page) {
   await fileInput.setInputFiles(FIXTURE_PATH);
 }
 
-// ---------------------------------------------------------------------------
-// MT-1. Truncated MCAP file handling
-// ---------------------------------------------------------------------------
+// --- Truncated MCAP file handling ---
 test.describe('Truncated MCAP file', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
   });
 
-  test('MT-1-1: gracefully handles truncated mcap file', async ({ page }) => {
+  test('gracefully handles truncated mcap file', async ({ page }) => {
     await uploadTruncatedMcap(page);
     // The truncated file should either:
     // - Load partial data (streaming reader recovers some records)
@@ -32,7 +30,7 @@ test.describe('Truncated MCAP file', () => {
     await expect(loaded.or(errorHeading)).toBeVisible({ timeout: 15000 });
   });
 
-  test('MT-1-2: app remains functional after truncated file', async ({ page }) => {
+  test('app remains functional after truncated file', async ({ page }) => {
     await uploadTruncatedMcap(page);
     // Wait for processing to complete
     const loaded = page.getByText(/Loaded.*rosout messages/).first();
@@ -43,7 +41,7 @@ test.describe('Truncated MCAP file', () => {
     await expect(page.getByText('ROSbag Analyzer')).toBeVisible();
   });
 
-  test('MT-1-3: can load a valid file after truncated file', async ({ page }) => {
+  test('can load a valid file after truncated file', async ({ page }) => {
     // First load truncated file
     await uploadTruncatedMcap(page);
     const loaded = page.getByText(/Loaded.*rosout messages/).first();

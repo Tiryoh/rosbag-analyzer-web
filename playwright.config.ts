@@ -16,6 +16,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:3000',
     trace: 'on-first-retry',
     locale: 'en-US',
+    timezoneId: 'UTC',
   },
   projects: [
     {

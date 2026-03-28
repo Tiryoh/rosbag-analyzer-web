@@ -14,39 +14,35 @@ async function uploadMcap(page: import('@playwright/test').Page) {
   await expect(page.getByText(/Loaded.*rosout messages/)).toBeVisible({ timeout: 15000 });
 }
 
-// ---------------------------------------------------------------------------
-// M-1. MCAP file upload
-// ---------------------------------------------------------------------------
+// --- MCAP file upload ---
 test.describe('MCAP file upload', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadMcap(page);
   });
 
-  test('M-1-1: loads rosout messages', async ({ page }) => {
+  test('loads rosout messages', async ({ page }) => {
     await expect(page.getByText(/Loaded 10 rosout messages/)).toBeVisible();
   });
 
-  test('M-1-2: detects diagnostics', async ({ page }) => {
+  test('detects diagnostics', async ({ page }) => {
     await expect(page.getByText(/diagnostics state changes/)).toBeVisible();
   });
 
-  test('M-1-3: shows tabs', async ({ page }) => {
+  test('shows tabs', async ({ page }) => {
     await expect(page.getByRole('button', { name: /Rosout/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Diagnostics/ })).toBeVisible();
   });
 });
 
-// ---------------------------------------------------------------------------
-// M-2. MCAP rosout severity mapping
-// ---------------------------------------------------------------------------
+// --- MCAP severity mapping ---
 test.describe('MCAP severity mapping', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadMcap(page);
   });
 
-  test('M-2-1: severity levels are correctly mapped', async ({ page }) => {
+  test('severity levels are correctly mapped', async ({ page }) => {
     // Check all severity levels appear in the table
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(10);
@@ -57,7 +53,7 @@ test.describe('MCAP severity mapping', () => {
     }
   });
 
-  test('M-2-2: severity color coding', async ({ page }) => {
+  test('severity color coding', async ({ page }) => {
     const firstRow = page.locator('table tbody tr').first();
     const rowClass = await firstRow.getAttribute('class');
     expect(rowClass).toBeTruthy();
@@ -65,45 +61,43 @@ test.describe('MCAP severity mapping', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// M-3. MCAP rosout filters
-// ---------------------------------------------------------------------------
+// --- MCAP rosout filters ---
 test.describe('MCAP rosout filters', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadMcap(page);
   });
 
-  test('M-3-1: severity filter', async ({ page }) => {
+  test('severity filter', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR' }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2); // 2 ERROR messages
   });
 
-  test('M-3-2: node filter', async ({ page }) => {
+  test('node filter', async ({ page }) => {
     await page.getByLabel('/sensor/lidar').check();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(3); // 3 lidar messages
   });
 
-  test('M-3-3: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('timeout');
+  test('keyword filter', async ({ page }) => {
+    await page.locator('input[type="text"][placeholder*="error"]').fill('timeout');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2); // "Connection timeout" + "System watchdog timeout"
   });
 
-  test('M-3-4: regex filter', async ({ page }) => {
+  test('regex filter', async ({ page }) => {
     await page.getByText('Regex').click();
-    await page.locator('input[type="text"]').fill('find.*path');
+    await page.locator('input[type="text"][placeholder*="error"]').fill('find.*path');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1); // "Failed to find valid path"
   });
 
-  test('M-3-5: AND mode', async ({ page }) => {
+  test('AND mode', async ({ page }) => {
     await page.getByLabel('AND (All match)').check();
     await page.getByRole('button', { name: 'ERROR' }).click();
     await page.getByLabel('/sensor/lidar').check();
@@ -112,7 +106,7 @@ test.describe('MCAP rosout filters', () => {
     await expect(rows).toHaveCount(1); // Only lidar ERROR
   });
 
-  test('M-3-6: clear filters', async ({ page }) => {
+  test('clear filters', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR' }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     await expect(page.locator('table tbody tr')).toHaveCount(2);
@@ -121,16 +115,14 @@ test.describe('MCAP rosout filters', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// M-4. MCAP rosout export
-// ---------------------------------------------------------------------------
+// --- MCAP rosout export ---
 test.describe('MCAP rosout export', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadMcap(page);
   });
 
-  test('M-4-1: CSV export', async ({ page }) => {
+  test('CSV export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'CSV' }).click(),
@@ -138,7 +130,7 @@ test.describe('MCAP rosout export', () => {
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
   });
 
-  test('M-4-2: JSON export', async ({ page }) => {
+  test('JSON export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'JSON' }).click(),
@@ -146,7 +138,7 @@ test.describe('MCAP rosout export', () => {
     expect(download.suggestedFilename()).toMatch(/\.json$/);
   });
 
-  test('M-4-3: TXT export', async ({ page }) => {
+  test('TXT export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'TXT' }).click(),
@@ -155,9 +147,7 @@ test.describe('MCAP rosout export', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// M-5. MCAP diagnostics
-// ---------------------------------------------------------------------------
+// --- MCAP diagnostics ---
 test.describe('MCAP diagnostics', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -165,18 +155,18 @@ test.describe('MCAP diagnostics', () => {
     await page.getByRole('button', { name: /Diagnostics/ }).click();
   });
 
-  test('M-5-1: diagnostics table visible', async ({ page }) => {
+  test('diagnostics table visible', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /Diagnostics State Changes/ })).toBeVisible();
   });
 
-  test('M-5-2: level filter', async ({ page }) => {
+  test('level filter', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR', exact: true }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1);
   });
 
-  test('M-5-3: name filter', async ({ page }) => {
+  test('name filter', async ({ page }) => {
     await page.getByRole('checkbox', { name: '/sensor/lidar' }).check();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
@@ -186,21 +176,21 @@ test.describe('MCAP diagnostics', () => {
     await expect(rows).toHaveCount(4);
   });
 
-  test('M-5-4: keyword filter', async ({ page }) => {
-    await page.locator('input[type="text"]').fill('temperature');
+  test('keyword filter', async ({ page }) => {
+    await page.locator('input[type="text"][placeholder*="error"]').fill('temperature');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1);
   });
 
-  test('M-5-5: row expand shows values', async ({ page }) => {
+  test('row expand shows values', async ({ page }) => {
     const toggleButton = page.locator('table tbody button[aria-expanded]').first();
     await toggleButton.click();
     await expect(toggleButton).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByText('frequency')).toBeVisible();
   });
 
-  test('M-5-6: diagnostics CSV export', async ({ page }) => {
+  test('diagnostics CSV export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'CSV' }).click(),

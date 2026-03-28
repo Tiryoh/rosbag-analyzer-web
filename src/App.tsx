@@ -1,4 +1,4 @@
-import { useRef, useState, Fragment } from 'react';
+import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import type { SeverityLevel } from './types';
@@ -54,6 +54,18 @@ function App() {
   const [diagUseRegex, setDiagUseRegex] = useState(false);
   const [diagFilterMode, setDiagFilterMode] = useState<'OR' | 'AND'>('OR');
 
+  // List search states
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [diagNameSearch, setDiagNameSearch] = useState('');
+
+  // Time range filter states
+  const [timeStart, setTimeStart] = useState('');
+  const [timeEnd, setTimeEnd] = useState('');
+  const [diagTimeStart, setDiagTimeStart] = useState('');
+  const [diagTimeEnd, setDiagTimeEnd] = useState('');
+  const [exportIgnoresTimeFilter, setExportIgnoresTimeFilter] = useState(false);
+  const prevTimezoneRef = useRef(timezone);
+
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +105,13 @@ function App() {
       setDiagKeywords('');
       setDiagRegexPattern('');
       setExpandedDiagRows(new Set());
+      setNodeSearch('');
+      setDiagNameSearch('');
+      setTimeStart('');
+      setTimeEnd('');
+      setDiagTimeStart('');
+      setDiagTimeEnd('');
+      setExportIgnoresTimeFilter(false);
       setActiveTab(result.messages.length > 0 ? 'rosout' : 'diagnostics');
       console.log('State updated successfully');
     } catch (err) {
@@ -113,6 +132,8 @@ function App() {
       messageRegex: useRegex ? regexPattern : undefined,
       filterMode,
       useRegex,
+      startTime: datetimeLocalToEpoch(timeStart),
+      endTime: datetimeLocalToEpoch(timeEnd),
     });
     setFilteredMessages(filtered);
   };
@@ -126,25 +147,36 @@ function App() {
       let type: string;
 
       if (activeTab === 'diagnostics') {
+        // If ignoring time filter, re-filter without time range
+        const exportData = (exportIgnoresTimeFilter && hasDiagTimeFilter)
+          ? filterDiagnostics(diagnostics, {
+              levels: diagSelectedLevels,
+              names: diagSelectedNames,
+              messageKeywords: diagUseRegex ? undefined : diagKeywords,
+              messageRegex: diagUseRegex ? diagRegexPattern : undefined,
+              filterMode: diagFilterMode,
+              useRegex: diagUseRegex,
+            })
+          : filteredDiagnostics;
         const prefix = 'diagnostics_export';
         switch (format) {
           case 'csv':
-            content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
+            content = exportDiagnosticsToCSV(exportData, timezone);
             filename = `${prefix}_${timestamp}.csv`;
             type = 'text/csv';
             break;
           case 'json':
-            content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
+            content = exportDiagnosticsToJSON(exportData, timezone);
             filename = `${prefix}_${timestamp}.json`;
             type = 'application/json';
             break;
           case 'txt':
-            content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
+            content = exportDiagnosticsToTXT(exportData, timezone);
             filename = `${prefix}_${timestamp}.txt`;
             type = 'text/plain';
             break;
           case 'parquet':
-            content = exportDiagnosticsToParquet(filteredDiagnostics, timezone);
+            content = exportDiagnosticsToParquet(exportData, timezone);
             filename = `${prefix}_${timestamp}.parquet`;
             type = 'application/vnd.apache.parquet';
             break;
@@ -154,24 +186,35 @@ function App() {
           }
         }
       } else {
+        // If ignoring time filter, re-filter without time range
+        const exportData = (exportIgnoresTimeFilter && hasTimeFilter)
+          ? filterMessages(messages, {
+              nodeNames: selectedNodes.size > 0 ? selectedNodes : undefined,
+              severityLevels: selectedSeverities.size > 0 ? selectedSeverities : undefined,
+              messageKeywords: keywords ? keywords.split(',').map(k => k.trim()) : undefined,
+              messageRegex: useRegex ? regexPattern : undefined,
+              filterMode,
+              useRegex,
+            })
+          : filteredMessages;
         switch (format) {
           case 'csv':
-            content = exportToCSV(filteredMessages, timezone);
+            content = exportToCSV(exportData, timezone);
             filename = `rosout_export_${timestamp}.csv`;
             type = 'text/csv';
             break;
           case 'json':
-            content = exportToJSON(filteredMessages, timezone);
+            content = exportToJSON(exportData, timezone);
             filename = `rosout_export_${timestamp}.json`;
             type = 'application/json';
             break;
           case 'txt':
-            content = exportToTXT(filteredMessages, timezone);
+            content = exportToTXT(exportData, timezone);
             filename = `rosout_export_${timestamp}.txt`;
             type = 'text/plain';
             break;
           case 'parquet':
-            content = exportToParquet(filteredMessages, timezone);
+            content = exportToParquet(exportData, timezone);
             filename = `rosout_export_${timestamp}.parquet`;
             type = 'application/vnd.apache.parquet';
             break;
@@ -221,6 +264,8 @@ function App() {
       messageRegex: diagUseRegex ? diagRegexPattern : undefined,
       filterMode: diagFilterMode,
       useRegex: diagUseRegex,
+      startTime: datetimeLocalToEpoch(diagTimeStart),
+      endTime: datetimeLocalToEpoch(diagTimeEnd),
     });
     setFilteredDiagnostics(filtered);
     setExpandedDiagRows(new Set());
@@ -279,6 +324,77 @@ function App() {
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
     }
   };
+
+  // Time range helpers
+  const datetimeLocalToEpoch = (dtStr: string): number | undefined => {
+    if (!dtStr) return undefined;
+    if (timezone === 'utc') {
+      return new Date(dtStr + 'Z').getTime() / 1000;
+    } else {
+      return new Date(dtStr).getTime() / 1000;
+    }
+  };
+
+  const epochToDatetimeLocal = (epoch: number): string => {
+    const date = new Date(epoch * 1000);
+    if (timezone === 'utc') {
+      return date.toISOString().slice(0, 19);
+    } else {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+  };
+
+  const messageTimeRange = useMemo(() => {
+    if (messages.length === 0) return null;
+    let min = messages[0].timestamp;
+    let max = messages[0].timestamp;
+    for (const m of messages) {
+      if (m.timestamp < min) min = m.timestamp;
+      if (m.timestamp > max) max = m.timestamp;
+    }
+    return { min, max };
+  }, [messages]);
+
+  const diagTimeRange = useMemo(() => {
+    if (diagnostics.length === 0) return null;
+    let min = diagnostics[0].timestamp;
+    let max = diagnostics[0].timestamp;
+    for (const d of diagnostics) {
+      if (d.timestamp < min) min = d.timestamp;
+      if (d.timestamp > max) max = d.timestamp;
+    }
+    return { min, max };
+  }, [diagnostics]);
+
+  // Convert time inputs when timezone toggles so they refer to the same instant
+  useEffect(() => {
+    const prev = prevTimezoneRef.current;
+    if (prev === timezone) return;
+    const convert = (dtStr: string): string => {
+      if (!dtStr) return '';
+      // Parse with previous timezone
+      const epoch = prev === 'utc'
+        ? new Date(dtStr + 'Z').getTime() / 1000
+        : new Date(dtStr).getTime() / 1000;
+      // Format with new timezone
+      const date = new Date(epoch * 1000);
+      if (timezone === 'utc') {
+        return date.toISOString().slice(0, 19);
+      } else {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      }
+    };
+    setTimeStart(s => convert(s));
+    setTimeEnd(s => convert(s));
+    setDiagTimeStart(s => convert(s));
+    setDiagTimeEnd(s => convert(s));
+    prevTimezoneRef.current = timezone;
+  }, [timezone]);
+
+  const hasTimeFilter = timeStart !== '' || timeEnd !== '';
+  const hasDiagTimeFilter = diagTimeStart !== '' || diagTimeEnd !== '';
 
   const hasData = messages.length > 0 || diagnostics.length > 0;
 
@@ -489,22 +605,42 @@ function App() {
               </div>
 
               {/* Nodes */}
-              <div className="text-left">
+              <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
                     {t('filter.nodes')} ({uniqueNodes.size})
                   </label>
                   <div className="flex gap-2">
-                    <button onClick={() => setSelectedNodes(new Set(uniqueNodes))} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
-                      {t('filter.selectAll')}
-                    </button>
-                    <button onClick={() => setSelectedNodes(new Set())} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
-                      {t('filter.clear')}
-                    </button>
+                    {nodeSearch ? (
+                      <>
+                        <button onClick={() => { const filtered = Array.from(uniqueNodes).filter(n => n.toLowerCase().includes(nodeSearch.toLowerCase())); setSelectedNodes(new Set([...selectedNodes, ...filtered])); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                          {t('filter.selectFiltered')}
+                        </button>
+                        <button onClick={() => { const filtered = new Set(Array.from(uniqueNodes).filter(n => n.toLowerCase().includes(nodeSearch.toLowerCase()))); const next = new Set([...selectedNodes].filter(n => !filtered.has(n))); setSelectedNodes(next); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                          {t('filter.deselectFiltered')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setSelectedNodes(new Set(uniqueNodes))} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                          {t('filter.selectAll')}
+                        </button>
+                        <button onClick={() => setSelectedNodes(new Set())} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                          {t('filter.clear')}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
+                <input
+                  type="text"
+                  value={nodeSearch}
+                  onChange={e => setNodeSearch(e.target.value)}
+                  placeholder={t('filter.searchPlaceholder')}
+                  className="w-full px-3 py-1.5 mb-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                />
                 <div className="max-h-32 overflow-y-auto border border-surface-200 dark:border-surface-700 rounded-lg p-2 bg-surface-50 dark:bg-surface-800/50">
-                  {Array.from(uniqueNodes).sort().map(node => (
+                  {Array.from(uniqueNodes).sort().filter(node => !nodeSearch || node.toLowerCase().includes(nodeSearch.toLowerCase())).map(node => (
                     <label key={node} className="flex items-center py-1 cursor-pointer">
                       <input type="checkbox" checked={selectedNodes.has(node)} onChange={() => toggleNode(node)} className="mr-2 accent-brand-600" />
                       <span className="text-xs text-surface-700 dark:text-surface-300 font-mono">{node}</span>
@@ -513,28 +649,23 @@ function App() {
                 </div>
               </div>
 
-              {/* Message Filter Type */}
-              <div className="text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">
-                  {t('filter.messageType')}
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={!useRegex} onChange={() => setUseRegex(false)} className="mr-2 accent-brand-600" />
-                    <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.keywords')}</span>
-                  </label>
-                  <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={useRegex} onChange={() => setUseRegex(true)} className="mr-2 accent-brand-600" />
-                    <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.regex')}</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Keywords or Regex */}
+              {/* Message Search: type toggle + input */}
               <div className="md:col-span-2 text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">
-                  {useRegex ? t('filter.regexLabel') : t('filter.keywordsLabel')}
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                    {t('filter.messageType')}
+                  </label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center cursor-pointer">
+                      <input type="radio" checked={!useRegex} onChange={() => setUseRegex(false)} className="mr-1.5 accent-brand-600" />
+                      <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.keywords')}</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input type="radio" checked={useRegex} onChange={() => setUseRegex(true)} className="mr-1.5 accent-brand-600" />
+                      <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.regex')}</span>
+                    </label>
+                  </div>
+                </div>
                 <input
                   type="text"
                   value={useRegex ? regexPattern : keywords}
@@ -543,6 +674,72 @@ function App() {
                   className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
                 />
               </div>
+
+              {/* Time Range */}
+              <div className="md:col-span-2 text-left">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                    {t('filter.timeRange')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal text-surface-400 font-mono">
+                      ({timezone === 'utc' ? 'UTC' : t('table.timezone.local')})
+                    </span>
+                  </label>
+                  {messageTimeRange && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setTimeStart(epochToDatetimeLocal(Math.floor(messageTimeRange.min))); setTimeEnd(epochToDatetimeLocal(Math.ceil(messageTimeRange.max))); }}
+                        className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                      >
+                        {t('filter.timeSetRange')}
+                      </button>
+                      {(timeStart || timeEnd) && (
+                        <button
+                          onClick={() => { setTimeStart(''); setTimeEnd(''); }}
+                          className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                        >
+                          {t('filter.clear')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">{t('filter.timeStart')}</label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={timeStart}
+                      onChange={e => setTimeStart(e.target.value)}
+                      min={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.min) : undefined}
+                      max={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.max) : undefined}
+                      placeholder={messageTimeRange ? formatTime(messageTimeRange.min) : undefined}
+                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">{t('filter.timeEnd')}</label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={timeEnd}
+                      onChange={e => setTimeEnd(e.target.value)}
+                      min={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.min) : undefined}
+                      max={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.max) : undefined}
+                      placeholder={messageTimeRange ? formatTime(messageTimeRange.max) : undefined}
+                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+                {messageTimeRange && (
+                  <p className="mt-1.5 text-xs text-surface-400 font-mono">
+                    {tf('filter.timeRangeHint', {
+                      start: formatTime(messageTimeRange.min),
+                      end: formatTime(messageTimeRange.max),
+                    })}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -550,7 +747,7 @@ function App() {
                 {t('filter.apply')}
               </button>
               <button
-                onClick={() => { setSelectedNodes(new Set()); setSelectedSeverities(new Set()); setKeywords(''); setRegexPattern(''); setFilteredMessages(messages); }}
+                onClick={() => { setSelectedNodes(new Set()); setSelectedSeverities(new Set()); setKeywords(''); setRegexPattern(''); setTimeStart(''); setTimeEnd(''); setFilteredMessages(messages); }}
                 className="px-5 py-2 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-sm rounded-lg font-medium transition-colors"
               >
                 {t('filter.clearAll')}
@@ -615,17 +812,30 @@ function App() {
                   <span className="text-xs text-surface-400 ml-2">{filteredMessages.length.toLocaleString()} {t('export.messages')}</span>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
-                <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
-                <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
-                <button
-                  onClick={() => handleExport('parquet')}
-                  data-testid="export-rosout-parquet"
-                  className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
-                >
-                  Parquet
-                </button>
+              <div className="flex items-center gap-3">
+                {hasTimeFilter && (
+                  <label className="flex items-center gap-1.5 cursor-pointer" title={t('export.ignoreTimeFilterTooltip')}>
+                    <input
+                      type="checkbox"
+                      checked={exportIgnoresTimeFilter}
+                      onChange={e => setExportIgnoresTimeFilter(e.target.checked)}
+                      className="accent-brand-600"
+                    />
+                    <span className="text-xs text-surface-500 dark:text-surface-400 underline decoration-dotted decoration-surface-400">{t('export.ignoreTimeFilter')}</span>
+                  </label>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
+                  <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
+                  <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
+                  <button
+                    onClick={() => handleExport('parquet')}
+                    data-testid="export-rosout-parquet"
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
+                  >
+                    Parquet
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -639,10 +849,10 @@ function App() {
                 {t('table.messages')} <span className="ml-2 text-xs font-mono text-surface-400">{filteredMessages.length.toLocaleString()}</span>
               </h2>
               <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-surface-400">{t('table.show')}</span>
-                  {[100, 500, 1000].map(n => (
-                    <button key={n} onClick={() => setPreviewLimit(n)} className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${previewLimit === n ? 'bg-brand-600 text-white' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'}`}>{n}</button>
+                <div className="flex items-center gap-1 bg-surface-100/60 dark:bg-surface-800/40 rounded-md p-0.5">
+                  <span className="text-xs text-surface-400 px-1.5">{t('table.show')}</span>
+                  {[100, 500, 1000, 5000, 10000].map(n => (
+                    <button key={n} onClick={() => setPreviewLimit(n)} className={`min-w-[2.5rem] px-1.5 py-0.5 text-xs font-mono rounded transition-colors text-center ${previewLimit === n ? 'bg-brand-600 text-white shadow-sm' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/40'}`}>{n.toLocaleString()}</button>
                   ))}
                 </div>
                 <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">
@@ -724,16 +934,36 @@ function App() {
                 </div>
               </div>
 
-              <div className="text-left">
+              <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">{t('filter.names')} ({uniqueDiagNames.size})</label>
                   <div className="flex gap-2">
-                    <button onClick={() => setDiagSelectedNames(new Set(uniqueDiagNames))} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">{t('filter.selectAll')}</button>
-                    <button onClick={() => setDiagSelectedNames(new Set())} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">{t('filter.clear')}</button>
+                    {diagNameSearch ? (
+                      <>
+                        <button onClick={() => { const filtered = Array.from(uniqueDiagNames).filter(n => n.toLowerCase().includes(diagNameSearch.toLowerCase())); setDiagSelectedNames(new Set([...diagSelectedNames, ...filtered])); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                          {t('filter.selectFiltered')}
+                        </button>
+                        <button onClick={() => { const filtered = new Set(Array.from(uniqueDiagNames).filter(n => n.toLowerCase().includes(diagNameSearch.toLowerCase()))); const next = new Set([...diagSelectedNames].filter(n => !filtered.has(n))); setDiagSelectedNames(next); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                          {t('filter.deselectFiltered')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setDiagSelectedNames(new Set(uniqueDiagNames))} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">{t('filter.selectAll')}</button>
+                        <button onClick={() => setDiagSelectedNames(new Set())} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">{t('filter.clear')}</button>
+                      </>
+                    )}
                   </div>
                 </div>
+                <input
+                  type="text"
+                  value={diagNameSearch}
+                  onChange={e => setDiagNameSearch(e.target.value)}
+                  placeholder={t('filter.searchPlaceholder')}
+                  className="w-full px-3 py-1.5 mb-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                />
                 <div className="max-h-32 overflow-y-auto border border-surface-200 dark:border-surface-700 rounded-lg p-2 bg-surface-50 dark:bg-surface-800/50">
-                  {Array.from(uniqueDiagNames).sort().map(name => (
+                  {Array.from(uniqueDiagNames).sort().filter(name => !diagNameSearch || name.toLowerCase().includes(diagNameSearch.toLowerCase())).map(name => (
                     <label key={name} className="flex items-center py-1 cursor-pointer">
                       <input type="checkbox" checked={diagSelectedNames.has(name)} onChange={() => toggleDiagName(name)} className="mr-2 accent-brand-600" />
                       <span className="text-xs text-surface-700 dark:text-surface-300 font-mono">{name}</span>
@@ -742,24 +972,23 @@ function App() {
                 </div>
               </div>
 
-              <div className="text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">{t('filter.messageType')}</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={!diagUseRegex} onChange={() => setDiagUseRegex(false)} className="mr-2 accent-brand-600" />
-                    <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.keywords')}</span>
-                  </label>
-                  <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={diagUseRegex} onChange={() => setDiagUseRegex(true)} className="mr-2 accent-brand-600" />
-                    <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.regex')}</span>
-                  </label>
-                </div>
-              </div>
-
+              {/* Message Search: type toggle + input */}
               <div className="md:col-span-2 text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">
-                  {diagUseRegex ? t('filter.regexLabel') : t('filter.keywordsLabel')}
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                    {t('filter.messageType')}
+                  </label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center cursor-pointer">
+                      <input type="radio" checked={!diagUseRegex} onChange={() => setDiagUseRegex(false)} className="mr-1.5 accent-brand-600" />
+                      <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.keywords')}</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input type="radio" checked={diagUseRegex} onChange={() => setDiagUseRegex(true)} className="mr-1.5 accent-brand-600" />
+                      <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.regex')}</span>
+                    </label>
+                  </div>
+                </div>
                 <input
                   type="text"
                   value={diagUseRegex ? diagRegexPattern : diagKeywords}
@@ -768,12 +997,78 @@ function App() {
                   className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
                 />
               </div>
+
+              {/* Time Range */}
+              <div className="md:col-span-2 text-left">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                    {t('filter.timeRange')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal text-surface-400 font-mono">
+                      ({timezone === 'utc' ? 'UTC' : t('table.timezone.local')})
+                    </span>
+                  </label>
+                  {diagTimeRange && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setDiagTimeStart(epochToDatetimeLocal(Math.floor(diagTimeRange.min))); setDiagTimeEnd(epochToDatetimeLocal(Math.ceil(diagTimeRange.max))); }}
+                        className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                      >
+                        {t('filter.timeSetRange')}
+                      </button>
+                      {(diagTimeStart || diagTimeEnd) && (
+                        <button
+                          onClick={() => { setDiagTimeStart(''); setDiagTimeEnd(''); }}
+                          className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                        >
+                          {t('filter.clear')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">{t('filter.timeStart')}</label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={diagTimeStart}
+                      onChange={e => setDiagTimeStart(e.target.value)}
+                      min={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.min) : undefined}
+                      max={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.max) : undefined}
+                      placeholder={diagTimeRange ? formatTime(diagTimeRange.min) : undefined}
+                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">{t('filter.timeEnd')}</label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={diagTimeEnd}
+                      onChange={e => setDiagTimeEnd(e.target.value)}
+                      min={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.min) : undefined}
+                      max={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.max) : undefined}
+                      placeholder={diagTimeRange ? formatTime(diagTimeRange.max) : undefined}
+                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+                {diagTimeRange && (
+                  <p className="mt-1.5 text-xs text-surface-400 font-mono">
+                    {tf('filter.timeRangeHint', {
+                      start: formatTime(diagTimeRange.min),
+                      end: formatTime(diagTimeRange.max),
+                    })}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
               <button onClick={applyDiagFilters} className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium transition-colors shadow-sm">{t('filter.apply')}</button>
               <button
-                onClick={() => { setDiagSelectedNames(new Set()); setDiagSelectedLevels(new Set()); setDiagKeywords(''); setDiagRegexPattern(''); setFilteredDiagnostics(diagnostics); setExpandedDiagRows(new Set()); }}
+                onClick={() => { setDiagSelectedNames(new Set()); setDiagSelectedLevels(new Set()); setDiagKeywords(''); setDiagRegexPattern(''); setDiagTimeStart(''); setDiagTimeEnd(''); setFilteredDiagnostics(diagnostics); setExpandedDiagRows(new Set()); }}
                 className="px-5 py-2 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-sm rounded-lg font-medium transition-colors"
               >
                 {t('filter.clearAll')}
@@ -793,17 +1088,30 @@ function App() {
                   <span className="text-xs text-surface-400 ml-2">{filteredDiagnostics.length.toLocaleString()} {t('export.stateChanges')}</span>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
-                <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
-                <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
-                <button
-                  onClick={() => handleExport('parquet')}
-                  data-testid="export-diagnostics-parquet"
-                  className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
-                >
-                  Parquet
-                </button>
+              <div className="flex items-center gap-3">
+                {hasDiagTimeFilter && (
+                  <label className="flex items-center gap-1.5 cursor-pointer" title={t('export.ignoreTimeFilterTooltip')}>
+                    <input
+                      type="checkbox"
+                      checked={exportIgnoresTimeFilter}
+                      onChange={e => setExportIgnoresTimeFilter(e.target.checked)}
+                      className="accent-brand-600"
+                    />
+                    <span className="text-xs text-surface-500 dark:text-surface-400 underline decoration-dotted decoration-surface-400">{t('export.ignoreTimeFilter')}</span>
+                  </label>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
+                  <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
+                  <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
+                  <button
+                    onClick={() => handleExport('parquet')}
+                    data-testid="export-diagnostics-parquet"
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
+                  >
+                    Parquet
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -817,10 +1125,10 @@ function App() {
                 {t('table.diagnosticsTitle')} <span className="ml-2 text-xs font-mono text-surface-400">{filteredDiagnostics.length.toLocaleString()}</span>
               </h2>
               <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-surface-400">{t('table.show')}</span>
-                  {[100, 500, 1000].map(n => (
-                    <button key={n} onClick={() => setPreviewLimit(n)} className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${previewLimit === n ? 'bg-brand-600 text-white' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'}`}>{n}</button>
+                <div className="flex items-center gap-1 bg-surface-100/60 dark:bg-surface-800/40 rounded-md p-0.5">
+                  <span className="text-xs text-surface-400 px-1.5">{t('table.show')}</span>
+                  {[100, 500, 1000, 5000, 10000].map(n => (
+                    <button key={n} onClick={() => setPreviewLimit(n)} className={`min-w-[2.5rem] px-1.5 py-0.5 text-xs font-mono rounded transition-colors text-center ${previewLimit === n ? 'bg-brand-600 text-white shadow-sm' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/40'}`}>{n.toLocaleString()}</button>
                   ))}
                 </div>
                 <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">

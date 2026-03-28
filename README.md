@@ -17,35 +17,37 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 - ⚡ **Fast** - Powered by WebAssembly for native-like performance
 - 🔁 **Supported ROS versions** - ROS1 (`.bag`) and ROS2 MCAP (`.mcap`, `.mcap.zstd`). Both indexed and non-indexed (streaming) MCAP files are supported.
 
+![Screenshot](docs/screenshot.png)
+
 ## 🚀 Quick Start
 
 ### Option 1: Live Demo
 
-Open the live demo at: [https://rosbag-analyzer.pages.dev](https://rosbag-analyzer.pages.dev)
+Open the live demo at: [https://rosbag-analyzer.tiryoh.com](https://rosbag-analyzer.tiryoh.com)
 
-### Option 2: Development Mode
+### Option 2: Use Pre-built
+
+Download the latest release from [Releases](https://github.com/Tiryoh/rosbag-analyzer-web/releases), extract the zip, and open the HTML file in your browser. Works completely offline — no internet connection required.
+
+### Option 3: Development Mode
 
 ```bash
-cd web-app
+cd rosbag-analyzer-web
 npm install
 npm run dev
 ```
 
 Then open http://localhost:3000 in your browser.
 
-### Option 3: Build for Production
+### Option 4: Build for Production
 
 ```bash
-cd web-app
+cd rosbag-analyzer-web
 npm install
 npm run build
 ```
 
 The built files will be in `dist/` folder. You can serve them with any static web server, or just open `dist/index.html` directly in your browser.
-
-### Option 4: Use Pre-built (Coming Soon)
-
-Download the latest release and open `index.html` in your browser.
 
 ## 📋 How to Use
 
