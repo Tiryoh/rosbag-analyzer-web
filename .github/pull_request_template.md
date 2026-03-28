@@ -28,6 +28,6 @@ Closes #
   - AI model / 使用モデル:
   - How it was used / 使用方法:
 
-> By submitting this PR, I confirm that a human has reviewed all changes and that this contribution is licensed under the [MIT License](LICENSE).
+> By submitting this PR, I confirm that a human has reviewed all changes and that this contribution is licensed under the [MIT License](https://github.com/Tiryoh/rosbag-analyzer-web/blob/main/LICENSE).
 >
 > この PR を提出することで、人間がすべての変更をレビュー済みであること、およびこの貢献が [MIT ライセンス](LICENSE) のもとで公開されることに同意します。
