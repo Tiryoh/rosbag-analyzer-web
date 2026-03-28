@@ -7,12 +7,24 @@ on:
       - 'src/**/*.test.ts'
       - 'docs/**'
       - '.github/workflows/test.yml'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/pull_request_template.md'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'src/**/*.test.ts'
       - 'docs/**'
       - '.github/workflows/test.yml'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/pull_request_template.md'
 
 jobs:
   deploy:
