@@ -14,100 +14,94 @@ async function uploadBag(page: import('@playwright/test').Page) {
   await expect(page.getByText(/Loaded.*rosout messages/)).toBeVisible({ timeout: 15000 });
 }
 
-// ---------------------------------------------------------------------------
-// 1. Initial page
-// ---------------------------------------------------------------------------
+// --- Initial page ---
 test.describe('Initial page', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
   });
 
-  test('1-1: shows title', async ({ page }) => {
+  test('shows title', async ({ page }) => {
     await expect(page.getByText('ROSbag Analyzer')).toBeVisible();
   });
 
-  test('1-1a: shows logo image', async ({ page }) => {
+  test('shows logo image', async ({ page }) => {
     const logo = page.getByRole('img', { name: 'ROSbag Analyzer' });
     await expect(logo).toBeVisible();
   });
 
-  test('1-2: shows upload area', async ({ page }) => {
+  test('shows upload area', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'Click to upload' })).toBeVisible();
     await expect(page.locator('input[type="file"]')).toBeAttached();
   });
 
-  test('1-3: filters are hidden before upload', async ({ page }) => {
+  test('filters are hidden before upload', async ({ page }) => {
     await expect(page.getByText('Filters')).not.toBeVisible();
   });
 
-  test('1-4: message table is hidden before upload', async ({ page }) => {
+  test('message table is hidden before upload', async ({ page }) => {
     await expect(page.locator('table')).not.toBeVisible();
   });
 
-  test('1-5: footer is visible', async ({ page }) => {
+  test('footer is visible', async ({ page }) => {
     await expect(page.getByText('View source on GitHub')).toBeVisible();
     await expect(page.getByText('Works offline')).toBeVisible();
   });
 });
 
-// ---------------------------------------------------------------------------
-// 2. File upload
-// ---------------------------------------------------------------------------
+// --- File upload ---
 test.describe('File upload', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadBag(page);
   });
 
-  test('2-1: loads rosout messages', async ({ page }) => {
+  test('loads rosout messages', async ({ page }) => {
     await expect(page.getByText(/Loaded 10 rosout messages/)).toBeVisible();
   });
 
-  test('2-2: detects diagnostics', async ({ page }) => {
+  test('detects diagnostics', async ({ page }) => {
     await expect(page.getByText(/diagnostics state changes/)).toBeVisible();
   });
 
-  test('2-3: shows tabs', async ({ page }) => {
+  test('shows tabs', async ({ page }) => {
     await expect(page.getByRole('button', { name: /Rosout/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Diagnostics/ })).toBeVisible();
   });
 });
 
-// ---------------------------------------------------------------------------
-// 3. Rosout filters
-// ---------------------------------------------------------------------------
+// --- Rosout filters ---
 test.describe('Rosout filters', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadBag(page);
   });
 
-  test('3-1: filter panel is visible', async ({ page }) => {
+  test('filter panel is visible', async ({ page }) => {
     await expect(page.getByText('Filters').first()).toBeVisible();
   });
 
-  test('3-2: severity filter', async ({ page }) => {
+  test('severity filter', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR' }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2); // 2 ERROR messages
   });
 
-  test('3-3: node filter', async ({ page }) => {
+  test('node filter', async ({ page }) => {
     await page.getByLabel('/sensor/lidar').check();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(3); // 3 lidar messages
   });
 
-  test('3-4: keyword filter', async ({ page }) => {
+  test('keyword filter', async ({ page }) => {
     await page.locator('input[type="text"][placeholder*="error"]').fill('timeout');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(2); // "Connection timeout" + "System watchdog timeout"
   });
 
-  test('3-5: regex filter', async ({ page }) => {
+  test('regex filter', async ({ page }) => {
     await page.getByText('Regex').click();
     await page.locator('input[type="text"][placeholder*="error"]').fill('find.*path');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
@@ -115,8 +109,7 @@ test.describe('Rosout filters', () => {
     await expect(rows).toHaveCount(1); // "Failed to find valid path"
   });
 
-  test('3-6: AND/OR mode toggle', async ({ page }) => {
-    // Select ERROR severity + /sensor/lidar node in AND mode
+  test('AND/OR mode toggle', async ({ page }) => {
     await page.getByLabel('AND (All match)').check();
     await page.getByRole('button', { name: 'ERROR' }).click();
     await page.getByLabel('/sensor/lidar').check();
@@ -125,7 +118,7 @@ test.describe('Rosout filters', () => {
     await expect(rows).toHaveCount(1); // Only lidar ERROR
   });
 
-  test('3-7: clear filters', async ({ page }) => {
+  test('clear filters', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR' }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     await expect(page.locator('table tbody tr')).toHaveCount(2);
@@ -133,7 +126,46 @@ test.describe('Rosout filters', () => {
     await expect(page.locator('table tbody tr')).toHaveCount(10);
   });
 
-  test('3-8: select all / clear nodes', async ({ page }) => {
+  test('time range filter narrows messages', async ({ page }) => {
+    const startInput = page.locator('input[type="datetime-local"]').first();
+    await startInput.fill('2023-11-14T22:13:22');
+    await page.getByRole('button', { name: 'Apply Filters' }).click();
+    const rows = page.locator('table tbody tr');
+    await expect(rows).toHaveCount(4); // 2.0, 2.5, 3.0, 3.5
+  });
+
+  test('fill data range button populates inputs', async ({ page }) => {
+    await page.getByText('Fill data range').click();
+    const startInput = page.locator('input[type="datetime-local"]').first();
+    const endInput = page.locator('input[type="datetime-local"]').last();
+    await expect(startInput).not.toHaveValue('');
+    await expect(endInput).not.toHaveValue('');
+    await page.getByRole('button', { name: 'Apply Filters' }).click();
+    await expect(page.locator('table tbody tr')).toHaveCount(10);
+  });
+
+  test('node search and select shown', async ({ page }) => {
+    const searchInput = page.locator('input[placeholder="Search..."]');
+    await searchInput.fill('lidar');
+    await page.getByRole('button', { name: 'select shown', exact: true }).click();
+    await searchInput.clear();
+    await page.getByRole('button', { name: 'Apply Filters' }).click();
+    const rows = page.locator('table tbody tr');
+    await expect(rows).toHaveCount(3); // 3 lidar messages
+  });
+
+  test('node search and deselect shown', async ({ page }) => {
+    await page.getByRole('button', { name: 'select all', exact: true }).click();
+    const searchInput = page.locator('input[placeholder="Search..."]');
+    await searchInput.fill('sensor');
+    await page.getByRole('button', { name: 'deselect shown', exact: true }).click();
+    await searchInput.clear();
+    await page.getByRole('button', { name: 'Apply Filters' }).click();
+    const rows = page.locator('table tbody tr');
+    await expect(rows).toHaveCount(5); // 10 - 5 sensor messages = 5
+  });
+
+  test('select all / clear nodes', async ({ page }) => {
     await page.getByRole('button', { name: 'select all' }).click();
     const checkboxes = page.locator('input[type="checkbox"]');
     const count = await checkboxes.count();
@@ -147,31 +179,29 @@ test.describe('Rosout filters', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 4. Rosout statistics
-// ---------------------------------------------------------------------------
+// --- Rosout statistics ---
 test.describe('Rosout statistics', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadBag(page);
   });
 
-  test('4-1: show stats panel', async ({ page }) => {
+  test('show stats panel', async ({ page }) => {
     await page.getByRole('button', { name: 'Show Stats' }).click();
     await expect(page.getByText('Statistics')).toBeVisible();
   });
 
-  test('4-2: severity counts', async ({ page }) => {
+  test('severity counts', async ({ page }) => {
     await page.getByRole('button', { name: 'Show Stats' }).click();
     await expect(page.getByText('By Severity')).toBeVisible();
   });
 
-  test('4-3: top 5 nodes', async ({ page }) => {
+  test('top 5 nodes', async ({ page }) => {
     await page.getByRole('button', { name: 'Show Stats' }).click();
     await expect(page.getByText('Top 5 Nodes')).toBeVisible();
   });
 
-  test('4-4: hide stats panel', async ({ page }) => {
+  test('hide stats panel', async ({ page }) => {
     await page.getByRole('button', { name: 'Show Stats' }).click();
     await expect(page.getByText('Statistics')).toBeVisible();
     await page.getByRole('button', { name: 'Hide Stats' }).click();
@@ -179,16 +209,14 @@ test.describe('Rosout statistics', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 5. Rosout export
-// ---------------------------------------------------------------------------
+// --- Rosout export ---
 test.describe('Rosout export', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadBag(page);
   });
 
-  test('5-1: CSV export', async ({ page }) => {
+  test('CSV export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'CSV' }).click(),
@@ -196,7 +224,7 @@ test.describe('Rosout export', () => {
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
   });
 
-  test('5-2: JSON export', async ({ page }) => {
+  test('JSON export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'JSON' }).click(),
@@ -204,57 +232,85 @@ test.describe('Rosout export', () => {
     expect(download.suggestedFilename()).toMatch(/\.json$/);
   });
 
-  test('5-3: TXT export', async ({ page }) => {
+  test('TXT export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'TXT' }).click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/\.txt$/);
   });
+
+  test('export ignoring time filter includes all rows', async ({ page }) => {
+    const startInput = page.locator('input[type="datetime-local"]').first();
+    await startInput.fill('2023-11-14T22:13:22');
+    await page.getByRole('button', { name: 'Apply Filters' }).click();
+    await expect(page.locator('table tbody tr')).toHaveCount(4);
+
+    await page.getByText('Ignore time filter').click();
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'CSV' }).click(),
+    ]);
+
+    const filePath = await download.path();
+    const fs = await import('fs');
+    const content = fs.readFileSync(filePath!, 'utf-8');
+    const lines = content.trim().split('\n');
+    expect(lines.length).toBe(11); // 1 header + 10 data rows
+  });
 });
 
-// ---------------------------------------------------------------------------
-// 6. Rosout message table
-// ---------------------------------------------------------------------------
+// --- Rosout message table ---
 test.describe('Rosout message table', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await uploadBag(page);
   });
 
-  test('6-1: table headers', async ({ page }) => {
+  test('table headers', async ({ page }) => {
     for (const header of ['Time', 'Node', 'Level', 'Message']) {
       await expect(page.locator('th', { hasText: header }).first()).toBeVisible();
     }
   });
 
-  test('6-2: displays messages', async ({ page }) => {
+  test('displays messages', async ({ page }) => {
     await expect(page.locator('table tbody tr')).toHaveCount(10);
   });
 
-  test('6-3: preview limit buttons', async ({ page }) => {
-    // With 10 messages, all limits show the same count, but buttons exist
+  test('preview limit buttons', async ({ page }) => {
     for (const n of ['100', '500', '1,000']) {
       await expect(page.getByRole('button', { name: n, exact: true })).toBeVisible();
     }
   });
 
-  test('6-4: timezone toggle', async ({ page }) => {
+  test('timezone toggle', async ({ page }) => {
     await page.getByRole('button', { name: 'Local' }).click();
-    // After toggling, button text changes to UTC and timestamps contain "UTC"
     await expect(page.getByRole('button', { name: 'UTC' })).toBeVisible();
     await expect(page.locator('table tbody tr').first().locator('td').first()).toContainText('UTC');
   });
 
-  test('6-5: severity color coding', async ({ page }) => {
-    // Check that rows have severity background classes
+  test('timezone toggle preserves time filter', async ({ page }) => {
+    await page.getByText('Fill data range').click();
+    const startInput = page.locator('input[type="datetime-local"]').first();
+    const valueBefore = await startInput.inputValue();
+    expect(valueBefore).not.toBe('');
+
+    await page.getByRole('button', { name: 'Local' }).click();
+    const valueAfter = await startInput.inputValue();
+    expect(valueAfter).not.toBe('');
+
+    await page.getByRole('button', { name: 'Apply Filters' }).click();
+    await expect(page.locator('table tbody tr')).toHaveCount(10);
+  });
+
+  test('severity color coding', async ({ page }) => {
     const firstRow = page.locator('table tbody tr').first();
     const rowClass = await firstRow.getAttribute('class');
     expect(rowClass).toBeTruthy();
     expect(rowClass).toMatch(/bg-/);
   });
 
-  test('6-6: mobile table controls remain visible', async ({ page }) => {
+  test('mobile table controls remain visible', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByRole('heading', { name: /Messages/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '100', exact: true })).toBeVisible();
@@ -262,9 +318,7 @@ test.describe('Rosout message table', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 7. Diagnostics tab
-// ---------------------------------------------------------------------------
+// --- Diagnostics tab ---
 test.describe('Diagnostics tab', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -272,52 +326,47 @@ test.describe('Diagnostics tab', () => {
     await page.getByRole('button', { name: /Diagnostics/ }).click();
   });
 
-  test('7-1: tab switch shows diagnostics table', async ({ page }) => {
+  test('tab switch shows diagnostics table', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /Diagnostics State Changes/ })).toBeVisible();
   });
 
-  test('7-2: filter panel is visible', async ({ page }) => {
+  test('filter panel is visible', async ({ page }) => {
     await expect(page.getByText('Filters').first()).toBeVisible();
   });
 
-  test('7-3: level filter', async ({ page }) => {
+  test('level filter', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR', exact: true }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
-    // Only /sensor/lidar ERROR "Connection lost"
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(1);
   });
 
-  test('7-4: name filter', async ({ page }) => {
+  test('name filter', async ({ page }) => {
     await page.getByRole('checkbox', { name: '/sensor/lidar' }).check();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
-    // lidar has state changes: OK → ERROR → STALE = 3 entries
     const rows = page.locator('table tbody tr');
     await expect(rows).toHaveCount(3);
   });
 
-  test('7-5: keyword filter', async ({ page }) => {
+  test('keyword filter', async ({ page }) => {
     await page.locator('input[type="text"][placeholder*="error"]').fill('temperature');
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     const rows = page.locator('table tbody tr');
-    await expect(rows).toHaveCount(1); // motor/left "High temperature"
+    await expect(rows).toHaveCount(1);
   });
 
-  test('7-6: clear filters', async ({ page }) => {
+  test('clear filters', async ({ page }) => {
     await page.getByRole('button', { name: 'ERROR', exact: true }).click();
     await page.getByRole('button', { name: 'Apply Filters' }).click();
     await expect(page.locator('table tbody tr')).toHaveCount(1);
     await page.getByRole('button', { name: 'Clear Filters' }).click();
-    // All state changes back
     const rows = page.locator('table tbody tr');
     const count = await rows.count();
     expect(count).toBeGreaterThan(1);
   });
 });
 
-// ---------------------------------------------------------------------------
-// 8. Diagnostics table
-// ---------------------------------------------------------------------------
+// --- Diagnostics table ---
 test.describe('Diagnostics table', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -325,21 +374,20 @@ test.describe('Diagnostics table', () => {
     await page.getByRole('button', { name: /Diagnostics/ }).click();
   });
 
-  test('8-1: table headers', async ({ page }) => {
+  test('table headers', async ({ page }) => {
     for (const header of ['Time', 'Name', 'Level', 'Message']) {
       await expect(page.locator('th', { hasText: header }).first()).toBeVisible();
     }
   });
 
-  test('8-2: row expand shows values', async ({ page }) => {
+  test('row expand shows values', async ({ page }) => {
     const toggleButton = page.locator('table tbody button[aria-expanded]').first();
     await toggleButton.click();
-    // Values should be visible (e.g. "frequency" key)
     await expect(toggleButton).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByText('frequency')).toBeVisible();
   });
 
-  test('8-3: row collapse hides values', async ({ page }) => {
+  test('row collapse hides values', async ({ page }) => {
     const toggleButton = page.locator('table tbody button[aria-expanded]').first();
     await toggleButton.click();
     await expect(page.getByText('frequency')).toBeVisible();
@@ -348,21 +396,19 @@ test.describe('Diagnostics table', () => {
     await expect(page.getByText('frequency')).not.toBeVisible();
   });
 
-  test('8-4: preview limit buttons', async ({ page }) => {
+  test('preview limit buttons', async ({ page }) => {
     for (const n of ['100', '500', '1,000']) {
       await expect(page.getByRole('button', { name: n, exact: true })).toBeVisible();
     }
   });
 
-  test('8-5: timezone toggle', async ({ page }) => {
+  test('timezone toggle', async ({ page }) => {
     await page.getByRole('button', { name: 'Local' }).click();
     await expect(page.getByRole('button', { name: 'UTC' })).toBeVisible();
   });
 });
 
-// ---------------------------------------------------------------------------
-// 9. Diagnostics export
-// ---------------------------------------------------------------------------
+// --- Diagnostics export ---
 test.describe('Diagnostics export', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -370,7 +416,7 @@ test.describe('Diagnostics export', () => {
     await page.getByRole('button', { name: /Diagnostics/ }).click();
   });
 
-  test('9-1: CSV export', async ({ page }) => {
+  test('CSV export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'CSV' }).click(),
@@ -378,7 +424,7 @@ test.describe('Diagnostics export', () => {
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
   });
 
-  test('9-2: JSON export', async ({ page }) => {
+  test('JSON export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'JSON' }).click(),
@@ -386,7 +432,7 @@ test.describe('Diagnostics export', () => {
     expect(download.suggestedFilename()).toMatch(/\.json$/);
   });
 
-  test('9-3: TXT export', async ({ page }) => {
+  test('TXT export', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'TXT' }).click(),

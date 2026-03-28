@@ -687,7 +687,7 @@ function App() {
                   {messageTimeRange && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => { setTimeStart(epochToDatetimeLocal(messageTimeRange.min)); setTimeEnd(epochToDatetimeLocal(messageTimeRange.max)); }}
+                        onClick={() => { setTimeStart(epochToDatetimeLocal(Math.floor(messageTimeRange.min))); setTimeEnd(epochToDatetimeLocal(Math.ceil(messageTimeRange.max))); }}
                         className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
                       >
                         {t('filter.timeSetRange')}
@@ -1010,7 +1010,7 @@ function App() {
                   {diagTimeRange && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => { setDiagTimeStart(epochToDatetimeLocal(diagTimeRange.min)); setDiagTimeEnd(epochToDatetimeLocal(diagTimeRange.max)); }}
+                        onClick={() => { setDiagTimeStart(epochToDatetimeLocal(Math.floor(diagTimeRange.min))); setDiagTimeEnd(epochToDatetimeLocal(Math.ceil(diagTimeRange.max))); }}
                         className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
                       >
                         {t('filter.timeSetRange')}
