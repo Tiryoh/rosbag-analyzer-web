@@ -82,7 +82,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Initializing decompression handlers...');
 
     console.log('Creating Bag with decompression support...');
-    const bag = new Bag(reader, {
+    let bag: InstanceType<typeof Bag> | null = new Bag(reader, {
       decompress: {
         bz2: (buffer: Uint8Array) => {
           console.log('Decompressing bz2 chunk, size:', buffer.length);
@@ -106,7 +106,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Chunk infos count:', bag.chunkInfos.length);
 
     // Check if bag is indexed — if not, reindex in-memory and use the reindexed bag
-    let activeBag = bag;
+    let activeBag = bag!;
     let reindexedBlob: Blob | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
       console.log('Bag file is unindexed. Reindexing in memory...');
@@ -127,6 +127,8 @@ export async function loadRosbagMessages(file: File): Promise<{
       await reindexedBag.open();
 
       activeBag = reindexedBag;
+      // Release original bag/reader to free memory
+      bag = null;
       console.log('Reindexed bag opened successfully');
     }
 

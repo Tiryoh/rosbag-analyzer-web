@@ -7,8 +7,6 @@
 
 const PREAMBLE = '#ROSBAG V2.0\n';
 const PREAMBLE_LENGTH = 13;
-const BAG_HEADER_READ_SIZE = 4096; // sufficient to read the bag header record
-
 const OP_MESSAGE_DATA = 0x02;
 const OP_BAG_HEADER = 0x03;
 const OP_INDEX_DATA = 0x04;
@@ -45,14 +43,6 @@ interface ChunkScanResult {
 type DecompressFn = (buffer: Uint8Array, size: number) => Uint8Array;
 type Decompress = Record<string, DecompressFn>;
 
-// --- Binary read helpers ---
-
-function readUint64AsNumber(view: DataView, offset: number): number {
-  const lo = view.getUint32(offset, true);
-  const hi = view.getUint32(offset + 4, true);
-  return lo + hi * 0x100000000;
-}
-
 // --- Binary write helpers ---
 
 function writeUint32(buf: Uint8Array, offset: number, value: number): void {
@@ -77,9 +67,10 @@ function extractFields(header: Uint8Array): Map<string, Uint8Array> {
   const fields = new Map<string, Uint8Array>();
   const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
   let offset = 0;
-  while (offset < header.length) {
+  while (offset + 4 <= header.length) {
     const fieldLen = view.getUint32(offset, true);
     offset += 4;
+    if (fieldLen === 0 || offset + fieldLen > header.length) break;
     const fieldBytes = header.subarray(offset, offset + fieldLen);
     // Find first '=' (0x3D)
     const eqIdx = fieldBytes.indexOf(0x3d);
@@ -142,15 +133,17 @@ function readRawRecord(data: Uint8Array, offset: number): RawRecord {
 // --- Record building ---
 
 function buildHeaderBytes(fields: [string, Uint8Array][]): Uint8Array {
+  const encoder = new TextEncoder();
+  const encodedKeys = fields.map(([key]) => encoder.encode(key));
   let totalLen = 0;
-  for (const [key, value] of fields) {
-    totalLen += 4 + key.length + 1 + value.length; // 4 (field len) + key + '=' + value
+  for (let i = 0; i < fields.length; i++) {
+    totalLen += 4 + encodedKeys[i].length + 1 + fields[i][1].length;
   }
   const buf = new Uint8Array(totalLen);
   let offset = 0;
-  const encoder = new TextEncoder();
-  for (const [key, value] of fields) {
-    const keyBytes = encoder.encode(key);
+  for (let i = 0; i < fields.length; i++) {
+    const keyBytes = encodedKeys[i];
+    const value = fields[i][1];
     const fieldLen = keyBytes.length + 1 + value.length;
     writeUint32(buf, offset, fieldLen);
     offset += 4;
@@ -507,35 +500,3 @@ export function reindexBagFromBuffer(
   return new Blob([output], { type: 'application/octet-stream' });
 }
 
-/**
- * Check if a bag file is unindexed by reading its header.
- */
-export async function isUnindexedBag(file: File): Promise<boolean> {
-  const headerSlice = file.slice(0, BAG_HEADER_READ_SIZE);
-  const buffer = await headerSlice.arrayBuffer();
-  const data = new Uint8Array(buffer);
-
-  // Verify preamble
-  const preamble = new TextDecoder().decode(data.subarray(0, PREAMBLE_LENGTH));
-  if (preamble !== PREAMBLE) return false;
-
-  try {
-    const record = readRawRecord(data, PREAMBLE_LENGTH);
-    const fields = extractFields(record.header);
-    if (getOpCode(fields) !== OP_BAG_HEADER) return false;
-
-    const indexPosField = fields.get('index_pos');
-    if (!indexPosField || indexPosField.length < 8) return false;
-    const indexPos = readUint64AsNumber(
-      new DataView(indexPosField.buffer, indexPosField.byteOffset, indexPosField.byteLength),
-      0,
-    );
-
-    const connCount = getUint32Field(fields, 'conn_count');
-    const chunkCount = getUint32Field(fields, 'chunk_count');
-
-    return indexPos === 0 && connCount === 0 && chunkCount === 0;
-  } catch {
-    return false;
-  }
-}
