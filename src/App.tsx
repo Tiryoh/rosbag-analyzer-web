@@ -32,6 +32,8 @@ function formatReindexWarningKey(warning: ReindexWarning): string {
       return 'reindex.warning.unsupportedCompression';
     case 'chunk-record-corrupt':
       return 'reindex.warning.chunkRecordCorrupt';
+    case 'missing-connection-metadata':
+      return 'reindex.warning.missingConnectionMetadata';
     default:
       return assertNever(warning.code);
   }

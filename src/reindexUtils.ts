@@ -50,7 +50,8 @@ export type ReindexWarningCode =
   | 'truncated-tail'
   | 'chunk-decompress-failed'
   | 'unsupported-compression'
-  | 'chunk-record-corrupt';
+  | 'chunk-record-corrupt'
+  | 'missing-connection-metadata';
 
 export interface ReindexWarning {
   code: ReindexWarningCode;
@@ -284,9 +285,33 @@ function formatWarningSummary(warning: ReindexWarning): string {
       return `Unsupported compression at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
     case 'chunk-record-corrupt':
       return `Chunk record corruption at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
+    case 'missing-connection-metadata':
+      return `Connection metadata missing at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
     default:
       return assertNever(warning.code);
   }
+}
+
+function summarizeMessageIndices(messageIndices: Map<number, IndexEntry[]>): {
+  startTime: Time;
+  endTime: Time;
+  messageCount: number;
+} {
+  let startTime: Time = { sec: 0, nsec: 0 };
+  let endTime: Time = { sec: 0, nsec: 0 };
+  let messageCount = 0;
+  let hasMessages = false;
+
+  for (const entries of messageIndices.values()) {
+    for (const entry of entries) {
+      if (!hasMessages || timeLessThan(entry.time, startTime)) startTime = entry.time;
+      if (!hasMessages || timeGreaterThan(entry.time, endTime)) endTime = entry.time;
+      messageCount++;
+      hasMessages = true;
+    }
+  }
+
+  return { startTime, endTime, messageCount };
 }
 
 // --- Chunk scanning ---
@@ -482,7 +507,6 @@ export function reindexBagFromBuffer(
   let chunksSeen = 0;
   let chunksRecovered = 0;
   let chunksSkipped = 0;
-  let messagesIndexedApprox = 0;
 
   while (pos < data.length) {
     let record: RawRecord;
@@ -548,12 +572,6 @@ export function reindexBagFromBuffer(
         const scanResult = scanChunkData(chunkData, chunkOffset);
         warnings.push(...scanResult.warnings);
 
-        let chunkMessageCount = 0;
-        for (const entries of scanResult.messageIndices.values()) {
-          chunkMessageCount += entries.length;
-        }
-        messagesIndexedApprox += chunkMessageCount;
-
         chunks.push({
           chunkOffset,
           chunkRawBytes: data.subarray(pos, pos + record.totalLen),
@@ -582,6 +600,34 @@ export function reindexBagFromBuffer(
     throw new ReindexFailureError(warnings);
   }
 
+  let messagesIndexedApprox = 0;
+  const normalizedChunks = chunks.map((chunk) => {
+    const filteredMessageIndices = new Map<number, IndexEntry[]>();
+
+    for (const [conn, entries] of chunk.messageIndices) {
+      if (!allConnections.has(conn)) {
+        warnings.push({
+          code: 'missing-connection-metadata',
+          chunkOffset: chunk.chunkOffset,
+          detail: `Skipped ${entries.length} message(s) for connection ${conn}: metadata was not recovered from any readable chunk`,
+        });
+        continue;
+      }
+
+      filteredMessageIndices.set(conn, entries);
+    }
+
+    const { startTime, endTime, messageCount } = summarizeMessageIndices(filteredMessageIndices);
+    messagesIndexedApprox += messageCount;
+
+    return {
+      ...chunk,
+      messageIndices: filteredMessageIndices,
+      startTime,
+      endTime,
+    };
+  });
+
   // Build new file:
   // 1. Preamble
   // 2. Bag header (placeholder, will be patched)
@@ -597,7 +643,7 @@ export function reindexBagFromBuffer(
   parts.push(preambleBytes);
 
   // 2. Bag header (placeholder - will be replaced at the end)
-  const placeholderBagHeader = buildBagHeaderRecord(0, allConnections.size, chunks.length);
+  const placeholderBagHeader = buildBagHeaderRecord(0, allConnections.size, normalizedChunks.length);
   parts.push(placeholderBagHeader);
 
   // Track new chunk positions for ChunkInfo records
@@ -605,7 +651,7 @@ export function reindexBagFromBuffer(
   let currentOffset = PREAMBLE_LENGTH + placeholderBagHeader.length;
 
   // 3. Chunks + IndexData
-  for (const chunk of chunks) {
+  for (const chunk of normalizedChunks) {
     newChunkPositions.push(currentOffset);
 
     // Copy original chunk record
@@ -635,8 +681,8 @@ export function reindexBagFromBuffer(
   }
 
   // 5. ChunkInfo records
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+  for (let i = 0; i < normalizedChunks.length; i++) {
+    const chunk = normalizedChunks[i];
     const connectionCounts = new Map<number, number>();
     for (const [conn, entries] of chunk.messageIndices) {
       connectionCounts.set(conn, entries.length);
@@ -660,7 +706,7 @@ export function reindexBagFromBuffer(
   }
 
   // Patch bag header with correct indexPosition
-  const finalBagHeader = buildBagHeaderRecord(indexPosition, allConnections.size, chunks.length);
+  const finalBagHeader = buildBagHeaderRecord(indexPosition, allConnections.size, normalizedChunks.length);
   output.set(finalBagHeader, PREAMBLE_LENGTH);
 
   return {

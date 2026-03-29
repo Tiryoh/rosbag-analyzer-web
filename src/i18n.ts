@@ -32,6 +32,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'reindex.warning.decompressFailed': 'Chunk decompression failed',
     'reindex.warning.unsupportedCompression': 'Unsupported chunk compression',
     'reindex.warning.chunkRecordCorrupt': 'Chunk record corruption detected',
+    'reindex.warning.missingConnectionMetadata': 'Connection metadata could not be recovered',
 
     // Tabs
     'tab.rosout': 'Rosout',
@@ -135,6 +136,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'reindex.warning.decompressFailed': 'chunk の展開に失敗',
     'reindex.warning.unsupportedCompression': '未対応の chunk 圧縮形式',
     'reindex.warning.chunkRecordCorrupt': 'chunk 内 record の破損を検出',
+    'reindex.warning.missingConnectionMetadata': 'connection metadata を復旧できなかったため一部接続をスキップ',
 
     // Tabs
     'tab.rosout': 'Rosout',
