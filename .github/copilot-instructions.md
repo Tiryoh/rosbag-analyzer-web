@@ -32,6 +32,17 @@ Prioritize findings that indicate:
 
 Do not start from general Node.js advice. First verify the runtime boundary, the existing implementation style, and the library APIs already used in this codebase.
 
+Also check whether the change should be documented as an ADR.
+Flag missing ADR coverage when a PR introduces or materially changes an architectural or policy-level decision whose rationale should be preserved, not just its implementation.
+Typical examples include:
+
+- Recovery or failure-handling policy changes, such as partial recovery rules or warning classification
+- Offline/runtime-boundary decisions
+- Data format compatibility or parsing strategy changes
+- Cross-cutting behavior contracts that multiple modules must follow
+
+Do not ask for an ADR for routine bug fixes, local refactors, isolated UI tweaks, or test-only changes unless they also introduce a lasting design decision.
+
 ## Frontend Review Priorities
 
 Frontend changes should receive extra scrutiny. Focus on:
