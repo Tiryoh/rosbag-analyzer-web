@@ -19,6 +19,11 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'status.loadedRosout': 'Loaded {messageCount} rosout messages from {nodeCount} nodes',
     'status.loadedRosoutDiagnostics': 'Loaded {messageCount} rosout messages from {nodeCount} nodes, {diagnosticCount} diagnostics state changes',
 
+    // Reindex
+    'reindex.noticeBold': 'Auto-reindexed.',
+    'reindex.noticeBody': 'This bag file had no index. It was reindexed in your browser. Download the reindexed file for faster loading next time.',
+    'reindex.download': 'Download reindexed bag',
+
     // Tabs
     'tab.rosout': 'Rosout',
     'tab.diagnostics': 'Diagnostics',
@@ -107,6 +112,11 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'error.title': '読み込みエラー',
     'status.loadedRosout': 'rosout {messageCount} 件、{nodeCount} ノードを読み込みました',
     'status.loadedRosoutDiagnostics': 'rosout {messageCount} 件、{nodeCount} ノード、診断状態の変化 {diagnosticCount} 件を読み込みました',
+
+    // Reindex
+    'reindex.noticeBold': '自動reindex済み',
+    'reindex.noticeBody': 'このbagファイルにはインデックスがなかったため、ブラウザ上でreindexしました。次回の読み込みを高速化するにはreindex済みファイルをダウンロードしてください。',
+    'reindex.download': 'reindex済みbagをダウンロード',
 
     // Tabs
     'tab.rosout': 'Rosout',

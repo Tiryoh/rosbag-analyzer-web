@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parquetReadObjects } from 'hyparquet';
-import { filterMessages, filterDiagnostics, exportToParquet, exportDiagnosticsToParquet } from './rosbagUtils';
+import { filterMessages, filterDiagnostics, exportToParquet, exportDiagnosticsToParquet, loadMessages } from './rosbagUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 
 // -- Test fixtures --
@@ -410,5 +410,45 @@ describe('Parquet export', () => {
       message: 'OK',
     });
     expect(rows[1].values_json).toEqual([]);
+  });
+});
+
+// ==================== loadMessages error handling ====================
+
+describe('loadMessages error handling', () => {
+  it('rejects empty (0-byte) file', async () => {
+    const emptyFile = new File([], 'empty.bag');
+    await expect(loadMessages(emptyFile)).rejects.toThrow('Empty file');
+  });
+
+  it('rejects empty mcap file', async () => {
+    const emptyFile = new File([], 'empty.mcap');
+    await expect(loadMessages(emptyFile)).rejects.toThrow('Empty file');
+  });
+
+  it('shows file size in error when large file fails to read', async () => {
+    const largeFile = {
+      name: 'large.mcap',
+      size: 1024 * 1024 * 1024, // 1 GB
+      arrayBuffer: () => {
+        const err = new DOMException('The requested file could not be read', 'NotReadableError');
+        return Promise.reject(err);
+      },
+      slice: () => new Blob(),
+    } as unknown as File;
+    await expect(loadMessages(largeFile)).rejects.toThrow(/1024 MB.*too large/);
+  });
+
+  it('does not alter error for small files that fail to read', async () => {
+    const smallFile = {
+      name: 'small.bag',
+      size: 1024, // 1 KB
+      arrayBuffer: () => {
+        const err = new DOMException('The requested file could not be read', 'NotReadableError');
+        return Promise.reject(err);
+      },
+      slice: () => new Blob(),
+    } as unknown as File;
+    await expect(loadMessages(smallFile)).rejects.toThrow('The requested file could not be read');
   });
 });
