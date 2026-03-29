@@ -67,7 +67,7 @@ export async function loadRosbagMessages(file: File): Promise<{
 
   try {
     console.log('Reading file as ArrayBuffer...');
-    const arrayBuffer = await file.arrayBuffer();
+    let arrayBuffer: ArrayBuffer | null = await file.arrayBuffer();
     console.log('ArrayBuffer loaded, size:', arrayBuffer.byteLength);
 
     // Check bag file header
@@ -77,7 +77,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('First 20 bytes:', Array.from(headerView.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
     console.log('Creating BlobReader...');
-    const reader = new BlobReader(new Blob([arrayBuffer]));
+    let reader: BlobReader | null = new BlobReader(new Blob([arrayBuffer]));
 
     console.log('Initializing decompression handlers...');
 
@@ -127,8 +127,10 @@ export async function loadRosbagMessages(file: File): Promise<{
       await reindexedBag.open();
 
       activeBag = reindexedBag;
-      // Release original bag/reader to free memory
+      // Release original bag/reader/buffer to free memory
       bag = null;
+      reader = null;
+      arrayBuffer = null;
       console.log('Reindexed bag opened successfully');
     }
 

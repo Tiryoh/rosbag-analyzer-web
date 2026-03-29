@@ -7,6 +7,8 @@
 
 const PREAMBLE = '#ROSBAG V2.0\n';
 const PREAMBLE_LENGTH = 13;
+const textDecoder = new TextDecoder();
+const textEncoder = new TextEncoder();
 const OP_MESSAGE_DATA = 0x02;
 const OP_BAG_HEADER = 0x03;
 const OP_INDEX_DATA = 0x04;
@@ -40,7 +42,7 @@ interface ChunkScanResult {
   endTime: Time;
 }
 
-type DecompressFn = (buffer: Uint8Array, size: number) => Uint8Array;
+type DecompressFn = (buffer: Uint8Array, size?: number) => Uint8Array;
 type Decompress = Record<string, DecompressFn>;
 
 // --- Binary write helpers ---
@@ -75,7 +77,7 @@ function extractFields(header: Uint8Array): Map<string, Uint8Array> {
     // Find first '=' (0x3D)
     const eqIdx = fieldBytes.indexOf(0x3d);
     if (eqIdx >= 0) {
-      const key = new TextDecoder().decode(fieldBytes.subarray(0, eqIdx));
+      const key = textDecoder.decode(fieldBytes.subarray(0, eqIdx));
       const value = fieldBytes.subarray(eqIdx + 1);
       fields.set(key, value);
     }
@@ -99,7 +101,7 @@ function getUint32Field(fields: Map<string, Uint8Array>, name: string): number {
 function getStringField(fields: Map<string, Uint8Array>, name: string): string {
   const val = fields.get(name);
   if (!val) return '';
-  return new TextDecoder().decode(val);
+  return textDecoder.decode(val);
 }
 
 // --- Record reading ---
@@ -133,8 +135,7 @@ function readRawRecord(data: Uint8Array, offset: number): RawRecord {
 // --- Record building ---
 
 function buildHeaderBytes(fields: [string, Uint8Array][]): Uint8Array {
-  const encoder = new TextEncoder();
-  const encodedKeys = fields.map(([key]) => encoder.encode(key));
+  const encodedKeys = fields.map(([key]) => textEncoder.encode(key));
   let totalLen = 0;
   for (let i = 0; i < fields.length; i++) {
     totalLen += 4 + encodedKeys[i].length + 1 + fields[i][1].length;
@@ -346,7 +347,7 @@ export function reindexBagFromBuffer(
   const data = new Uint8Array(buffer);
 
   // Verify preamble
-  const preamble = new TextDecoder().decode(data.subarray(0, PREAMBLE_LENGTH));
+  const preamble = textDecoder.decode(data.subarray(0, PREAMBLE_LENGTH));
   if (preamble !== PREAMBLE) {
     throw new Error('Not a valid ROS bag file');
   }
@@ -427,7 +428,7 @@ export function reindexBagFromBuffer(
   const parts: Uint8Array[] = [];
 
   // 1. Preamble
-  const preambleBytes = new TextEncoder().encode(PREAMBLE);
+  const preambleBytes = textEncoder.encode(PREAMBLE);
   parts.push(preambleBytes);
 
   // 2. Bag header (placeholder - will be replaced at the end)
