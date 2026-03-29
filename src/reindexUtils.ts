@@ -84,7 +84,7 @@ export class TruncatedRecordError extends Error {
 
 export class ReindexFailureError extends Error {
   readonly code = 'no-readable-chunks';
-  readonly blockers: ReindexWarning[];
+  readonly blockers: readonly ReindexWarning[];
 
   constructor(blockers: ReindexWarning[]) {
     const message = blockers.length > 0
@@ -94,6 +94,15 @@ export class ReindexFailureError extends Error {
     this.name = 'ReindexFailureError';
     this.blockers = blockers;
   }
+}
+
+export function isReindexFailureLike(error: unknown): error is ReindexFailureError {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'no-readable-chunks'
+    && 'blockers' in error
+    && Array.isArray(error.blockers);
 }
 
 // --- Binary write helpers ---
@@ -261,7 +270,7 @@ function isZeroFilled(data: Uint8Array): boolean {
   return true;
 }
 
-function assertNever(value: never): never {
+export function assertNever(value: never): never {
   throw new Error(`Unexpected value: ${String(value)}`);
 }
 
@@ -429,6 +438,9 @@ function buildBagHeaderRecord(indexPos: number, connCount: number, chunkCount: n
   // Total: 13 + 4 + headerLen + 4 + dataLen = 4096
   // dataLen = 4096 - 13 - 4 - headerLen - 4 = 4075 - headerLen
   const dataLen = 4075 - headerBytes.length;
+  if (dataLen < 0) {
+    throw new Error(`Bag header too large to fit in 4096-byte alignment (header: ${headerBytes.length} bytes, max: 4075)`);
+  }
   const data = new Uint8Array(dataLen); // zero-filled padding
 
   const record = new Uint8Array(4 + headerBytes.length + 4 + data.length);
@@ -500,6 +512,13 @@ export function reindexBagFromBuffer(
       let chunkData: Uint8Array | null = null;
       if (compression === 'none' || compression === '') {
         chunkData = record.data;
+      } else if (size === 0 && record.data.length > 0) {
+        warnings.push({
+          code: 'chunk-record-corrupt',
+          chunkOffset,
+          detail: `Skipped chunk at byte ${chunkOffset}: compressed chunk reports decompressed size 0 (data length: ${record.data.length})`,
+        });
+        chunksSkipped++;
       } else {
         const decompressFn = decompress[compression];
         if (!decompressFn) {

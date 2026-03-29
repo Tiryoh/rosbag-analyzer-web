@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
-import type { ReindexMeta, ReindexWarning } from './reindexUtils';
+import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from './reindexUtils';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import type { SeverityLevel } from './types';
 import { SEVERITY_LEVELS, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
@@ -37,18 +37,6 @@ function formatReindexWarningKey(warning: ReindexWarning): string {
   }
 }
 
-function assertNever(value: never): never {
-  throw new Error(`Unexpected value: ${String(value)}`);
-}
-
-function isReindexFailureLike(error: unknown): error is { code: 'no-readable-chunks'; blockers: ReindexWarning[] } {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && error.code === 'no-readable-chunks'
-    && 'blockers' in error
-    && Array.isArray(error.blockers);
-}
 
 function formatReindexWarningDetail(t: (key: string) => string, warning: ReindexWarning): string {
   const label = t(formatReindexWarningKey(warning));
@@ -104,7 +92,7 @@ function App() {
   // Reindexed bag download state
   const [reindexedBlob, setReindexedBlob] = useState<Blob | null>(null);
   const [reindexMeta, setReindexMeta] = useState<ReindexMeta | null>(null);
-  const [reindexBlockers, setReindexBlockers] = useState<ReindexWarning[] | null>(null);
+  const [reindexBlockers, setReindexBlockers] = useState<readonly ReindexWarning[] | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
 
   // Drag state

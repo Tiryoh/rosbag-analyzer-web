@@ -113,30 +113,36 @@ export async function loadRosbagMessages(file: File): Promise<{
     let reindexMeta: ReindexMeta | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
       console.log('Bag file is unindexed. Reindexing in memory...');
-      const { reindexBagFromBuffer } = await import('./reindexUtils');
-      const reindexResult = reindexBagFromBuffer(arrayBuffer, {
-        bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
-        lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
-      });
-      reindexedBlob = reindexResult.blob;
-      reindexMeta = reindexResult.meta;
-      console.log('Reindex complete. Reopening reindexed bag...');
-
-      const reindexedReader = new BlobReader(reindexedBlob);
-      const reindexedBag = new Bag(reindexedReader, {
-        decompress: {
+      try {
+        const { reindexBagFromBuffer } = await import('./reindexUtils');
+        const reindexResult = reindexBagFromBuffer(arrayBuffer, {
           bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
           lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
-        },
-      });
-      await reindexedBag.open();
+        });
+        reindexedBlob = reindexResult.blob;
+        reindexMeta = reindexResult.meta;
+        console.log('Reindex complete. Reopening reindexed bag...');
 
-      activeBag = reindexedBag;
-      // Release original bag/reader/buffer to free memory
-      bag = null;
-      reader = null;
-      arrayBuffer = null;
-      console.log('Reindexed bag opened successfully');
+        const reindexedReader = new BlobReader(reindexedBlob);
+        const reindexedBag = new Bag(reindexedReader, {
+          decompress: {
+            bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
+            lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
+          },
+        });
+        await reindexedBag.open();
+
+        activeBag = reindexedBag;
+        // Release original bag/reader/buffer to free memory
+        bag = null;
+        reader = null;
+        arrayBuffer = null;
+        console.log('Reindexed bag opened successfully');
+      } catch (reindexError) {
+        const { isReindexFailureLike } = await import('./reindexUtils');
+        if (isReindexFailureLike(reindexError)) throw reindexError;
+        throw new Error(`Failed to reindex bag file: ${reindexError instanceof Error ? reindexError.message : String(reindexError)}`);
+      }
     }
 
     // Find rosout and diagnostics topics
