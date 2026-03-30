@@ -160,9 +160,11 @@ function App() {
       console.error('Error in handleFileUpload:', err);
       if (isReindexFailureLike(err)) {
         setReindexBlockers(err.blockers);
+        setError(t('error.reindexFailed'));
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load bag file';
+        setError(errorMessage);
       }
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load bag file';
-      setError(errorMessage);
     } finally {
       setLoading(false);
       console.log('=== File upload completed ===');

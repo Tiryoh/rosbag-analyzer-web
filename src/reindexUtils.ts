@@ -54,10 +54,10 @@ export type ReindexWarningCode =
   | 'missing-connection-metadata';
 
 export interface ReindexWarning {
-  code: ReindexWarningCode;
-  chunkOffset: number;
-  detail: string;
-  compression?: string;
+  readonly code: ReindexWarningCode;
+  readonly chunkOffset: number;
+  readonly detail: string;
+  readonly compression?: string;
 }
 
 export interface ReindexMeta {
@@ -100,6 +100,8 @@ export class ReindexFailureError extends Error {
 export function isReindexFailureLike(error: unknown): error is ReindexFailureError {
   return typeof error === 'object'
     && error !== null
+    && 'name' in error
+    && error.name === 'ReindexFailureError'
     && 'code' in error
     && error.code === 'no-readable-chunks'
     && 'blockers' in error
@@ -378,12 +380,17 @@ function scanChunkData(
           break;
         }
       }
-      warnings.push({
-        code: 'chunk-record-corrupt',
-        chunkOffset,
-        detail: `Stopped reading chunk at byte ${offset}: ${getErrorDetail(error)}`,
-      });
-      break;
+      // TruncatedRecordError and RangeError are expected from corrupt binary data.
+      // Other errors (TypeError etc.) indicate programming bugs and should propagate.
+      if (error instanceof TruncatedRecordError || error instanceof RangeError) {
+        warnings.push({
+          code: 'chunk-record-corrupt',
+          chunkOffset,
+          detail: `Stopped reading chunk at byte ${offset}: ${getErrorDetail(error)}`,
+        });
+        break;
+      }
+      throw error;
     }
   }
 

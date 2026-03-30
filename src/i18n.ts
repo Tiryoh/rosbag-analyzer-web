@@ -16,6 +16,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // Loading / Error
     'loading.message': 'Loading bag file...',
     'error.title': 'Error loading bag file',
+    'error.reindexFailed': 'No readable chunks found in bag file. See recovery blockers below.',
     'status.loadedRosout': 'Loaded {messageCount} rosout messages from {nodeCount} nodes',
     'status.loadedRosoutDiagnostics': 'Loaded {messageCount} rosout messages from {nodeCount} nodes, {diagnosticCount} diagnostics state changes',
 
@@ -120,6 +121,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // Loading / Error
     'loading.message': '読み込み中...',
     'error.title': '読み込みエラー',
+    'error.reindexFailed': '読み取り可能なchunkがありません。下記の復旧阻害要因を確認してください。',
     'status.loadedRosout': 'rosout {messageCount} 件、{nodeCount} ノードを読み込みました',
     'status.loadedRosoutDiagnostics': 'rosout {messageCount} 件、{nodeCount} ノード、診断状態の変化 {diagnosticCount} 件を読み込みました',
 

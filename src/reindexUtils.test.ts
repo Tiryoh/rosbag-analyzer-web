@@ -359,6 +359,29 @@ describe('reindexBagFromBuffer', () => {
     expect(messageCount).toBe(1);
   });
 
+  it('emits chunk-record-corrupt warning for garbage bytes inside a chunk', async () => {
+    const fixture = await loadFixtureBuffer('test_unindexed.bag');
+    const records = parseFixtureChunkRecords(fixture);
+    // Build a chunk with valid records followed by non-zero garbage
+    const validRecords = concatBytes([
+      pickChunkRecord(records, OP_CONNECTION, 0),
+      pickChunkRecord(records, OP_MESSAGE_DATA, 0),
+    ]);
+    const garbage = new Uint8Array([0xff, 0xfe, 0xfd, 0xfc, 0xfb, 0xfa, 0xf9, 0xf8]);
+    const corruptChunkData = concatBytes([validRecords, garbage]);
+
+    const buffer = buildUnindexedBag([
+      { chunkData: corruptChunkData, compression: 'none' },
+    ]);
+
+    const result = reindexBagFromBuffer(buffer, decompress);
+
+    expect(result.meta.partial).toBe(true);
+    expect(result.meta.warnings.some(w => w.code === 'chunk-record-corrupt')).toBe(true);
+    expect(result.meta.chunksRecovered).toBe(1);
+    expect(result.meta.messagesIndexedApprox).toBeGreaterThan(0);
+  });
+
   it('reports partial when tail bytes are appended', async () => {
     const buffer = await loadFixtureBuffer('test_unindexed.bag');
     const original = new Uint8Array(buffer);
