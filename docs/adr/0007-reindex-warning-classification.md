@@ -1,6 +1,6 @@
 # ADR: Separate reindex partial recovery warnings by failure cause
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-03-30
 
 ## Context
