@@ -1,9 +1,21 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parquetReadObjects } from 'hyparquet';
-import { filterMessages, filterDiagnostics, exportToParquet, exportDiagnosticsToParquet } from './rosbagUtils';
+import { ReindexFailureError } from './reindexUtils';
+import { filterMessages, filterDiagnostics, exportToParquet, exportDiagnosticsToParquet, loadMessages } from './rosbagUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 
 // -- Test fixtures --
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function loadFixtureFile(name: string): Promise<File> {
+  const fixturePath = path.resolve(__dirname, '../e2e/fixtures', name);
+  const buffer = await readFile(fixturePath);
+  return new File([buffer], name);
+}
 
 const rosoutMessages: RosoutMessage[] = [
   { timestamp: 100, node: '/node_a', severity: 'DEBUG', message: 'debug info here' },
@@ -410,5 +422,94 @@ describe('Parquet export', () => {
       message: 'OK',
     });
     expect(rows[1].values_json).toEqual([]);
+  });
+});
+
+// ==================== loadMessages error handling ====================
+
+describe('loadMessages error handling', () => {
+  it('rejects empty (0-byte) file', async () => {
+    const emptyFile = new File([], 'empty.bag');
+    await expect(loadMessages(emptyFile)).rejects.toThrow('Empty file');
+  });
+
+  it('rejects empty mcap file', async () => {
+    const emptyFile = new File([], 'empty.mcap');
+    await expect(loadMessages(emptyFile)).rejects.toThrow('Empty file');
+  });
+
+  it('shows file size in error when large file fails to read', async () => {
+    const largeFile = {
+      name: 'large.mcap',
+      size: 1024 * 1024 * 1024, // 1 GB
+      arrayBuffer: () => {
+        const err = new DOMException('The requested file could not be read', 'NotReadableError');
+        return Promise.reject(err);
+      },
+      slice: () => new Blob(),
+    } as unknown as File;
+    await expect(loadMessages(largeFile)).rejects.toThrow(/1024 MB.*too large/);
+  });
+
+  it('does not alter error for small files that fail to read', async () => {
+    const smallFile = {
+      name: 'small.bag',
+      size: 1024, // 1 KB
+      arrayBuffer: () => {
+        const err = new DOMException('The requested file could not be read', 'NotReadableError');
+        return Promise.reject(err);
+      },
+      slice: () => new Blob(),
+    } as unknown as File;
+    await expect(loadMessages(smallFile)).rejects.toThrow('The requested file could not be read');
+  });
+});
+
+describe('loadMessages reindex metadata', () => {
+  it('returns non-partial reindex metadata for a valid unindexed bag', async () => {
+    const file = await loadFixtureFile('test_unindexed.bag');
+    const result = await loadMessages(file);
+
+    expect(result.reindexedBlob).toBeInstanceOf(Blob);
+    expect(result.reindexMeta).toMatchObject({
+      partial: false,
+      chunksSeen: 1,
+      chunksSkipped: 0,
+    });
+    expect(result.reindexMeta?.warnings).toHaveLength(0);
+    expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('returns partial reindex metadata when a readable bag has truncated tail bytes', async () => {
+    const file = await loadFixtureFile('test_unindexed.bag');
+    const originalBuffer = new Uint8Array(await file.arrayBuffer());
+    const corruptedBuffer = new Uint8Array(originalBuffer.length + 3);
+    corruptedBuffer.set(originalBuffer, 0);
+    corruptedBuffer.set([0xde, 0xad, 0xbe], originalBuffer.length);
+    const corruptedFile = new File([corruptedBuffer], 'test_unindexed_truncated_tail.bag');
+
+    const result = await loadMessages(corruptedFile);
+
+    expect(result.reindexedBlob).toBeInstanceOf(Blob);
+    expect(result.reindexMeta?.partial).toBe(true);
+    expect(result.reindexMeta?.chunksSeen).toBe(1);
+    expect(result.reindexMeta?.warnings.some(warning => warning.code === 'truncated-tail')).toBe(true);
+    expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('surfaces recovery blockers when no chunk can be recovered', async () => {
+    const file = await loadFixtureFile('test_truncated.bag');
+    await expect(loadMessages(file)).rejects.toBeInstanceOf(ReindexFailureError);
+  });
+
+  it('surfaces recovery blocker details for unreadable truncated bags', async () => {
+    const file = await loadFixtureFile('test_truncated.bag');
+    try {
+      await loadMessages(file);
+      expect.fail('Expected loadMessages to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReindexFailureError);
+      expect((error as ReindexFailureError).blockers.some((warning) => warning.code === 'truncated-tail')).toBe(true);
+    }
   });
 });

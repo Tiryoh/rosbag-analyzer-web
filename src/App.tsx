@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
+import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from './reindexUtils';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import type { SeverityLevel } from './types';
 import { SEVERITY_LEVELS, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
@@ -15,10 +16,34 @@ import {
   exportDiagnosticsToTXT,
   exportDiagnosticsToParquet,
   downloadFile,
+  downloadBlob,
   filterDiagnostics,
 } from './rosbagUtils';
 import { useI18n } from './i18n';
 import logoUrl from './assets/logo.png';
+
+function formatReindexWarningKey(warning: ReindexWarning): string {
+  switch (warning.code) {
+    case 'truncated-tail':
+      return 'reindex.warning.truncatedTail';
+    case 'chunk-decompress-failed':
+      return 'reindex.warning.decompressFailed';
+    case 'unsupported-compression':
+      return 'reindex.warning.unsupportedCompression';
+    case 'chunk-record-corrupt':
+      return 'reindex.warning.chunkRecordCorrupt';
+    case 'missing-connection-metadata':
+      return 'reindex.warning.missingConnectionMetadata';
+    default:
+      return assertNever(warning.code);
+  }
+}
+
+
+function formatReindexWarningDetail(t: (key: string) => string, warning: ReindexWarning): string {
+  const label = t(formatReindexWarningKey(warning));
+  return warning.compression ? `${label} (${warning.compression}): ${warning.detail}` : `${label}: ${warning.detail}`;
+}
 
 function App() {
   const { lang, setLang, t, tf } = useI18n();
@@ -66,6 +91,12 @@ function App() {
   const [exportIgnoresTimeFilter, setExportIgnoresTimeFilter] = useState(false);
   const prevTimezoneRef = useRef(timezone);
 
+  // Reindexed bag download state
+  const [reindexedBlob, setReindexedBlob] = useState<Blob | null>(null);
+  const [reindexMeta, setReindexMeta] = useState<ReindexMeta | null>(null);
+  const [reindexBlockers, setReindexBlockers] = useState<readonly ReindexWarning[] | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +114,10 @@ function App() {
 
     setLoading(true);
     setError('');
+    setReindexedBlob(null);
+    setReindexMeta(null);
+    setReindexBlockers(null);
+    setUploadedFileName(file.name);
 
     try {
       console.log('Calling loadMessages...');
@@ -91,6 +126,13 @@ function App() {
       console.log('Messages loaded:', result.messages.length);
       console.log('Unique nodes:', result.uniqueNodes.size);
       console.log('Diagnostics:', result.diagnostics.length, 'hasDiagnostics:', result.hasDiagnostics);
+
+      if (result.reindexedBlob) {
+        setReindexedBlob(result.reindexedBlob);
+      }
+      if (result.reindexMeta) {
+        setReindexMeta(result.reindexMeta);
+      }
 
       setMessages(result.messages);
       setFilteredMessages(result.messages);
@@ -116,8 +158,13 @@ function App() {
       console.log('State updated successfully');
     } catch (err) {
       console.error('Error in handleFileUpload:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load bag file';
-      setError(errorMessage);
+      if (isReindexFailureLike(err)) {
+        setReindexBlockers(err.blockers);
+        setError(t('error.reindexFailed'));
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load bag file';
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
       console.log('=== File upload completed ===');
@@ -498,9 +545,27 @@ function App() {
 
         {/* Error */}
         {error && (
-          <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 rounded-xl animate-fade-in">
+          <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 rounded-xl animate-fade-in" data-testid="error-panel">
             <p className="text-red-700 dark:text-red-400 font-semibold text-sm mb-1">{t('error.title')}</p>
             <pre className="text-xs text-red-600 dark:text-red-300 whitespace-pre-wrap overflow-x-auto font-mono">{error}</pre>
+            {reindexBlockers && reindexBlockers.length > 0 && (
+              <div className="mt-3" data-testid="reindex-blockers">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                  {t('reindex.blockersTitle')}
+                </p>
+                <ul className="mt-2 space-y-1 text-xs text-red-600 dark:text-red-300">
+                  {reindexBlockers.map((warning, index) => (
+                    <li
+                      key={`${warning.code}-${warning.chunkOffset}-${index}`}
+                      data-testid="reindex-blocker-item"
+                      data-code={warning.code}
+                    >
+                      {formatReindexWarningDetail(t, warning)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
@@ -519,6 +584,61 @@ function App() {
                     nodeCount: uniqueNodes.size,
                   })}
             </p>
+          </div>
+        )}
+
+        {/* Reindexed notification */}
+        {reindexedBlob && hasData && !loading && (
+          <div
+            className={`mb-8 p-4 border rounded-xl animate-fade-in ${
+              reindexMeta?.partial
+                ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50'
+                : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50'
+            }`}
+            data-testid="reindex-notice"
+          >
+            <p className={`text-sm mb-2.5 ${reindexMeta?.partial ? 'text-amber-800 dark:text-amber-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
+              <span className="font-semibold">
+                {reindexMeta?.partial ? t('reindex.partialBold') : t('reindex.noticeBold')}
+              </span>{' '}
+              {reindexMeta?.partial ? t('reindex.partialBody') : t('reindex.noticeBody')}
+            </p>
+            {reindexMeta?.partial && (
+              <div className="mb-3 text-sm text-amber-800 dark:text-amber-300" data-testid="reindex-warning">
+                <p className="font-medium">
+                  {tf('reindex.partialSummary', {
+                    recovered: reindexMeta.chunksRecovered,
+                    seen: reindexMeta.chunksSeen,
+                    skipped: reindexMeta.chunksSkipped,
+                  })}
+                </p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer select-none font-medium">
+                    {t('reindex.partialDetails')}
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs leading-relaxed" data-testid="reindex-warning-details">
+                    {reindexMeta.warnings.map((warning, index) => (
+                      <li key={`${warning.code}-${warning.chunkOffset}-${index}`}>
+                        {formatReindexWarningDetail(t, warning)}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => downloadBlob(reindexedBlob, uploadedFileName || 'reindexed.bag')}
+              data-testid="download-reindexed"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+                reindexMeta?.partial
+                  ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-white/60 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                  : 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-white/60 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+              }`}
+            >
+              <Download className="w-4 h-4" />
+              {t('reindex.download')}
+            </button>
           </div>
         )}
 

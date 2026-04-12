@@ -3,10 +3,12 @@ import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
 import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
 import { parquetWriteBuffer } from 'hyparquet-writer';
+import type { ReindexMeta } from './reindexUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
 type Timezone = 'local' | 'utc';
+
 
 type BagConnectionView = {
   topic: string;
@@ -54,6 +56,8 @@ export async function loadRosbagMessages(file: File): Promise<{
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
+  reindexedBlob?: Blob;
+  reindexMeta?: ReindexMeta;
 }> {
   const messages: RosoutMessage[] = [];
   const uniqueNodes = new Set<string>();
@@ -65,7 +69,7 @@ export async function loadRosbagMessages(file: File): Promise<{
 
   try {
     console.log('Reading file as ArrayBuffer...');
-    const arrayBuffer = await file.arrayBuffer();
+    let arrayBuffer: ArrayBuffer | null = await file.arrayBuffer();
     console.log('ArrayBuffer loaded, size:', arrayBuffer.byteLength);
 
     // Check bag file header
@@ -75,12 +79,12 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('First 20 bytes:', Array.from(headerView.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
     console.log('Creating BlobReader...');
-    const reader = new BlobReader(new Blob([arrayBuffer]));
+    let reader: BlobReader | null = new BlobReader(new Blob([arrayBuffer]));
 
     console.log('Initializing decompression handlers...');
 
     console.log('Creating Bag with decompression support...');
-    const bag = new Bag(reader, {
+    let bag: InstanceType<typeof Bag> | null = new Bag(reader, {
       decompress: {
         bz2: (buffer: Uint8Array) => {
           console.log('Decompressing bz2 chunk, size:', buffer.length);
@@ -103,23 +107,53 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Connections count:', bag.connections.size);
     console.log('Chunk infos count:', bag.chunkInfos.length);
 
-    // Check if bag is indexed
+    // Check if bag is indexed — if not, reindex in-memory and use the reindexed bag
+    let activeBag = bag!;
+    let reindexedBlob: Blob | undefined;
+    let reindexMeta: ReindexMeta | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
-      throw new Error(
-        '❌ このbagファイルはインデックス化されていないため、ブラウザ上で読み込めません。\n\n' +
-        '🔧 解決方法:\n' +
-        'ターミナルで以下のコマンドを実行してください:\n\n' +
-        `  rosbag reindex ${file.name}\n\n` +
-        'これによりインデックス付きバージョンが作成され、ブラウザで解析できるようになります。\n\n' +
-        '💡 ヒント: reindexされたファイルは元のファイル名に ".orig" が追加されます。'
-      );
+      console.log('Bag file is unindexed. Reindexing in memory...');
+      try {
+        const { reindexBagFromBuffer } = await import('./reindexUtils');
+        const reindexResult = reindexBagFromBuffer(arrayBuffer, {
+          bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
+          lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
+        });
+        reindexedBlob = reindexResult.blob;
+        reindexMeta = reindexResult.meta;
+        console.log('Reindex complete. Reopening reindexed bag...');
+
+        const reindexedReader = new BlobReader(reindexedBlob);
+        const reindexedBag = new Bag(reindexedReader, {
+          decompress: {
+            bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
+            lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
+          },
+        });
+        await reindexedBag.open();
+
+        activeBag = reindexedBag;
+        // Release original bag/reader/buffer to free memory
+        bag = null;
+        reader = null;
+        arrayBuffer = null;
+        console.log('Reindexed bag opened successfully');
+      } catch (reindexError) {
+        const { isReindexFailureLike } = await import('./reindexUtils');
+        if (isReindexFailureLike(reindexError)) throw reindexError;
+        const wrapped = new Error(
+          `Failed to reindex bag file: ${reindexError instanceof Error ? reindexError.message : String(reindexError)}`,
+        );
+        (wrapped as unknown as { cause: unknown }).cause = reindexError;
+        throw wrapped;
+      }
     }
 
     // Find rosout and diagnostics topics
     console.log('Searching for rosout and diagnostics topics...');
     const rosoutTopics: string[] = [];
     const diagnosticsTopics: string[] = [];
-    for (const [connId, conn] of bag.connections) {
+    for (const [connId, conn] of activeBag.connections) {
       console.log(`  Connection ${connId}: Topic: ${conn.topic}, Type: ${conn.type}`);
       if (conn.topic.includes('rosout') || conn.type === 'rosgraph_msgs/Log') {
         rosoutTopics.push(conn.topic);
@@ -135,7 +169,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Total diagnostics topics found:', diagnosticsTopics.length);
 
     if (rosoutTopics.length === 0 && diagnosticsTopics.length === 0) {
-      const availableTopics = Array.from(bag.connections.values())
+      const availableTopics = Array.from(activeBag.connections.values())
         .map((conn: BagConnectionView) => `  - ${conn.topic} [${conn.type ?? 'unknown'}]`)
         .join('\n');
 
@@ -155,7 +189,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log('Reading rosout messages from topics:', rosoutTopics);
       let messageCount = 0;
 
-      await bag.readMessages(
+      await activeBag.readMessages(
         { topics: rosoutTopics, decompress: decompressOptions },
         (result: ReadMessageResult<RosoutPayload>) => {
           messageCount++;
@@ -195,7 +229,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log('Reading diagnostics messages from topics:', diagnosticsTopics);
       const lastState = new Map<string, { level: number; message: string }>();
 
-      await bag.readMessages(
+      await activeBag.readMessages(
         { topics: diagnosticsTopics, decompress: decompressOptions },
         (result: ReadMessageResult<DiagnosticArrayPayload>) => {
           const msg = result.message;
@@ -223,7 +257,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics state changes`);
     }
 
-    return { messages, uniqueNodes, diagnostics, hasDiagnostics };
+    return { messages, uniqueNodes, diagnostics, hasDiagnostics, reindexedBlob, reindexMeta };
   } catch (error) {
     console.error('!!! Error loading rosbag !!!');
     console.error('Error type:', error?.constructor?.name);
@@ -493,17 +527,40 @@ export async function loadMessages(file: File): Promise<{
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
+  reindexedBlob?: Blob;
+  reindexMeta?: ReindexMeta;
 }> {
-  const name = file.name.toLowerCase();
-  if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
-    const { loadMcapMessages } = await import('./mcapUtils');
-    return loadMcapMessages(file);
+  if (file.size === 0) {
+    throw new Error('Empty file. The selected file contains no data.');
   }
-  return loadRosbagMessages(file);
+  const name = file.name.toLowerCase();
+  try {
+    if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
+      const { loadMcapMessages } = await import('./mcapUtils');
+      return await loadMcapMessages(file);
+    }
+    return await loadRosbagMessages(file);
+  } catch (err) {
+    // Large files may fail to load into memory
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(0);
+    if (file.size > 512 * 1024 * 1024 && err instanceof DOMException && err.name === 'NotReadableError') {
+      throw new Error(
+        `Failed to read file (${sizeMB} MB). The file is too large to load into browser memory.\n\n` +
+        'Try splitting the file into smaller parts or using a command-line tool.'
+      );
+    }
+    throw err;
+  }
 }
 
+/** Download serialized content (CSV/JSON/TXT/Parquet) as a file. */
 export function downloadFile(content: string | Uint8Array, filename: string, type: string) {
   const blob = new Blob([content as unknown as BlobPart], { type });
+  downloadBlob(blob, filename);
+}
+
+/** Download an existing Blob (e.g. reindexed bag) as a file. */
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
