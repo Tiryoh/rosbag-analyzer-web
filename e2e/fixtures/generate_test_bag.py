@@ -47,27 +47,44 @@ try:
         bag.write("/rosout_agg", msg, t)
 
     # === /diagnostics_agg messages (diagnostic_msgs/DiagnosticArray) ===
+    # NOTE: value-count variety matters here — UI tests (detail expansion,
+    # overflow regression) exercise the 1 / 2 / 3 / 4-value cases and a
+    # realistic long path-like value. Do not collapse these back to a
+    # uniform shape without updating those tests.
+    # NOTE: Do not mutate the @1.0 `/sensor/camera` WARN values or the @3.0
+    # `/motor/left` WARN values — `e2e/parquet-export.spec.ts` pins them
+    # byte-for-byte via the WARN filter.
     diag_data = [
         # (offset_sec, [(name, level, message, {key: value})])
         (0.0, [
+            # 4 values — exercises lg:grid-cols-4 full-row case.
             ("/sensor/lidar", DiagnosticStatus.OK, "Running normally",
-             {"frequency": "10.0", "packets_received": "1000"}),
+             {"frequency": "10.0", "packets_received": "1000",
+              "scan_rate_hz": "10", "serial_number": "VLP16-123456"}),
             ("/sensor/camera", DiagnosticStatus.OK, "Connected",
              {"fps": "30", "resolution": "1920x1080"}),
         ]),
         (1.0, [
+            # Same level as @0.0 → not a state change, but keep schema
+            # consistent with the @0.0 entry.
             ("/sensor/lidar", DiagnosticStatus.OK, "Running normally",
-             {"frequency": "10.0", "packets_received": "2000"}),
+             {"frequency": "10.0", "packets_received": "2000",
+              "scan_rate_hz": "10", "serial_number": "VLP16-123456"}),
             ("/sensor/camera", DiagnosticStatus.WARN, "Low frame rate",
              {"fps": "12", "resolution": "1920x1080"}),
         ]),
         (2.0, [
+            # 3 values, one realistically long path — exercises the grid
+            # cell overflow case that previously visually overlapped
+            # neighbouring cells before the `min-w-0` + `break-all` fix.
             ("/sensor/lidar", DiagnosticStatus.ERROR, "Connection lost",
-             {"frequency": "0.0", "error_count": "5"}),
+             {"frequency": "0.0", "error_count": "5",
+              "last_heartbeat_source": "/rover/sensors/lidar_front_driver/heartbeat_monitor_node"}),
             ("/sensor/camera", DiagnosticStatus.OK, "Recovered",
              {"fps": "28", "resolution": "1920x1080"}),
         ]),
         (3.0, [
+            # 1 value — exercises the single-value case.
             ("/sensor/lidar", DiagnosticStatus.STALE, "No data received",
              {"last_update": "2.5s ago"}),
             ("/motor/left", DiagnosticStatus.WARN, "High temperature",
