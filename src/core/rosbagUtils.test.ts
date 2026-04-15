@@ -19,7 +19,7 @@ import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } f
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function loadFixtureSource(name: string): Promise<BagSource> {
-  const fixturePath = path.resolve(__dirname, '../e2e/fixtures', name);
+  const fixturePath = path.resolve(__dirname, '../../e2e/fixtures', name);
   const buffer = await readFile(fixturePath);
   return { name, data: new Uint8Array(buffer) };
 }

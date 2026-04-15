@@ -1,9 +1,9 @@
 import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
-import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from './reindexUtils';
-import type { RosoutMessage, DiagnosticStatusEntry } from './types';
-import type { SeverityLevel } from './types';
-import { SEVERITY_LEVELS, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
+import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from '../core/reindexUtils';
+import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from '../core/types';
+import { SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
+import { SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './severityStyles';
 import {
   loadMessages,
   filterMessages,
@@ -16,7 +16,7 @@ import {
   exportDiagnosticsToTXT,
   exportDiagnosticsToParquet,
   filterDiagnostics,
-} from './rosbagUtils';
+} from '../core/rosbagUtils';
 import { fileToBagSource, downloadFile, downloadBytes } from './fileAdapter';
 import { useI18n } from './i18n';
 import logoUrl from './assets/logo.png';

@@ -41,7 +41,7 @@ interface ParsedChunkRecord extends RawRecord {
 }
 
 async function loadFixtureBuffer(name: string): Promise<ArrayBuffer> {
-  const fixturePath = path.resolve(__dirname, '../e2e/fixtures', name);
+  const fixturePath = path.resolve(__dirname, '../../e2e/fixtures', name);
   const buffer = await readFile(fixturePath);
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 }

@@ -2,20 +2,20 @@
 
 ## Overview
 
-This document defines the test specification for the filter functions in `src/rosbagUtils.ts`. It serves as the source of truth for test behavior — test code should be written (or rewritten) to match this spec.
+This document defines the test specification for the filter functions in `src/core/rosbagUtils.ts`. It serves as the source of truth for test behavior — test code should be written (or rewritten) to match this spec.
 
 ### Target Functions
 
 | Function | File | Description |
 |---|---|---|
-| `filterMessages` | `src/rosbagUtils.ts` | Filters rosout (`/rosout`, `/rosout_agg`) messages |
-| `filterDiagnostics` | `src/rosbagUtils.ts` | Filters diagnostics (`/diagnostics_agg`) entries |
+| `filterMessages` | `src/core/rosbagUtils.ts` | Filters rosout (`/rosout`, `/rosout_agg`) messages |
+| `filterDiagnostics` | `src/core/rosbagUtils.ts` | Filters diagnostics (`/diagnostics_agg`) entries |
 
 ### Test Framework
 
 - **vitest** (configured via Vite)
 - Run: `npm test` (single run) / `npm run test:watch` (watch mode)
-- Test file: `src/rosbagUtils.test.ts`
+- Test file: `src/core/rosbagUtils.test.ts`
 - **Playwright** for browser E2E
 - Run: `npm run test:e2e`
 
@@ -193,7 +193,7 @@ Activated when `useRegex=false`. Input is a comma-separated string. Case-insensi
 When adding new test cases:
 
 1. **Add the spec here first** — assign an ID following the pattern (`FM-xx` / `FD-xx`), describe the condition and expected result
-2. **Then write the test code** — implement the case in `src/rosbagUtils.test.ts` matching the spec
+2. **Then write the test code** — implement the case in `src/core/rosbagUtils.test.ts` matching the spec
 3. **Keep fixtures minimal** — add to the shared fixtures only if existing data cannot cover the new case
 4. **One assertion focus per test** — each test should verify one specific filtering behavior
 

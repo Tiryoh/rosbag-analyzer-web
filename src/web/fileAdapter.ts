@@ -6,7 +6,7 @@
  * parsing logic run in Node / workers / future TUI contexts without depending
  * on `document`, `Blob`, or `URL.createObjectURL`.
  */
-import type { BagSource } from './types';
+import type { BagSource } from '../core/types';
 
 /**
  * Read a DOM `File` into a `BagSource`. Wraps large-file read failures so the

@@ -13,11 +13,12 @@ Before reviewing a change, first confirm which area it affects:
 
 Key areas to understand before commenting:
 
-- `src/App.tsx` - Main UI flow, upload handling, filters, exports, tabs, and diagnostics interactions
-- `src/rosbagUtils.ts` - ROS bag loading, filtering, export logic, and browser-side processing
-- `src/mcapUtils.ts` - MCAP parsing and message extraction
-- `src/reindexUtils.ts` - Reindexing for unindexed or damaged ROS1 bag files
-- `src/types.ts` - Shared types and severity mappings
+- `src/web/App.tsx` - Main UI flow, upload handling, filters, exports, tabs, and diagnostics interactions
+- `src/web/fileAdapter.ts` - Browser adapters: File → BagSource conversion and download helpers
+- `src/core/rosbagUtils.ts` - ROS bag loading (from a BagSource), filtering, and export logic
+- `src/core/mcapUtils.ts` - MCAP parsing and message extraction
+- `src/core/reindexUtils.ts` - Reindexing for unindexed or damaged ROS1 bag files
+- `src/core/types.ts` - Core types (BagSource, RosoutMessage, DiagnosticStatusEntry) and severity mappings
 - `e2e/*.spec.ts` - Browser-level behavior and integration coverage
 
 ## Review Approach
@@ -84,7 +85,7 @@ Logic correctness to verify:
 
 Do not require a single test style for all changes. First classify the change.
 
-- Pure filtering, transform, or deterministic export logic changes should usually add or update Vitest coverage in `src/rosbagUtils.test.ts`
+- Pure filtering, transform, or deterministic export logic changes should usually add or update Vitest coverage in `src/core/rosbagUtils.test.ts`
 - Browser interaction, upload/download flow, parsing integration, MCAP behavior, reindex behavior, and UI-driven export behavior may be validated with Playwright E2E tests under `e2e/*.spec.ts`
 - If behavior changes and neither unit tests nor E2E coverage change, flag the missing coverage
 - Do not reject a change only because the test was added in E2E instead of unit test when E2E is the correct layer
