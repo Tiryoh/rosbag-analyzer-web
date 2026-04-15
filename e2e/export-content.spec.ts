@@ -22,6 +22,16 @@ async function readDownloadedBuffer(download: import('@playwright/test').Downloa
   return fs.readFileSync(filePath!);
 }
 
+// Normalize downloaded text before asserting on lines:
+// - Explicitly strip a leading UTF-8 BOM (`\uFEFF`) rather than relying on
+//   `String.prototype.trim()` picking it up as whitespace, which is
+//   incidental and could also consume meaningful leading whitespace.
+// - Split on `/\r?\n/` so the assertions behave the same regardless of
+//   whether the producer emits LF or CRLF.
+function stripBomAndSplitLines(content: string): string[] {
+  return content.replace(/^\uFEFF/, '').replace(/\r?\n$/, '').split(/\r?\n/);
+}
+
 // --- Rosout export content ---
 test.describe('Rosout export content', () => {
   test.beforeEach(async ({ page }) => {
@@ -40,7 +50,7 @@ test.describe('Rosout export content', () => {
     expect(buffer[2]).toBe(0xBF);
 
     const content = await readDownloadedText(download);
-    const lines = content.trim().split('\n');
+    const lines = stripBomAndSplitLines(content);
     expect(lines[0]).toBe('Timestamp,Time,Node,Severity,Message,File,Line,Function,Topics');
     expect(lines).toHaveLength(11); // 1 header + 10 data rows
   });
@@ -67,7 +77,7 @@ test.describe('Rosout export content', () => {
     ]);
 
     const content = await readDownloadedText(download);
-    const lines = content.trim().split('\n');
+    const lines = stripBomAndSplitLines(content);
     expect(lines).toHaveLength(10);
     for (const line of lines) {
       expect(line).toMatch(/^\[.+\] \[(DEBUG|INFO|WARN|ERROR|FATAL)\] \[.+\]: .+/);
@@ -94,7 +104,7 @@ test.describe('Diagnostics export content', () => {
     expect(buffer[2]).toBe(0xBF);
 
     const content = await readDownloadedText(download);
-    const lines = content.trim().split('\n');
+    const lines = stripBomAndSplitLines(content);
     expect(lines[0]).toBe('Timestamp,Time,Name,Level,Message,Values');
     expect(lines.length).toBeGreaterThan(1);
   });
@@ -120,7 +130,7 @@ test.describe('Diagnostics export content', () => {
     ]);
 
     const content = await readDownloadedText(download);
-    const lines = content.trim().split('\n');
+    const lines = stripBomAndSplitLines(content);
     expect(lines.length).toBeGreaterThan(0);
     for (const line of lines) {
       expect(line).toMatch(/^\[.+\] \[(OK|WARN|ERROR|STALE)\] .+: .+/);

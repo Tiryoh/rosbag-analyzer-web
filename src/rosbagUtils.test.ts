@@ -451,6 +451,12 @@ describe('escapeCSV', () => {
     expect(escapeCSV('line1\nline2')).toBe('"line1\nline2"');
   });
 
+  it('wraps value containing carriage return', () => {
+    // Per RFC 4180, CR must also trigger quoting (e.g. Windows CRLF in logs).
+    expect(escapeCSV('line1\rline2')).toBe('"line1\rline2"');
+    expect(escapeCSV('line1\r\nline2')).toBe('"line1\r\nline2"');
+  });
+
   it('handles all special characters together', () => {
     expect(escapeCSV('a,"b\nc')).toBe('"a,""b\nc"');
   });
