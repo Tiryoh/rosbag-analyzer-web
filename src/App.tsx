@@ -1310,9 +1310,9 @@ function App() {
                           <td colSpan={5} className="px-8 py-2">
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-xs font-mono">
                               {diag.values.map((v, vi) => (
-                                <div key={vi} className="flex gap-1">
-                                  <span className="text-surface-500">{v.key}:</span>
-                                  <span className="text-surface-800 dark:text-surface-200">{v.value}</span>
+                                <div key={vi} className="flex gap-1 min-w-0" data-testid="diag-detail-kv">
+                                  <span className="text-surface-500 shrink-0">{v.key}:</span>
+                                  <span className="text-surface-800 dark:text-surface-200 min-w-0 break-all">{v.value}</span>
                                 </div>
                               ))}
                             </div>
