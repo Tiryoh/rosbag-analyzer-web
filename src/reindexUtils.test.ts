@@ -3,10 +3,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import Bag from '@foxglove/rosbag/dist/cjs/Bag';
-import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
 import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
 import { reindexBagFromBuffer, ReindexFailureError } from './reindexUtils';
+
+// Minimal in-memory Filelike for the rosbag `Bag` class, used to verify that
+// reindexed byte output is itself openable. Mirrors the reader used inside
+// rosbagUtils.ts, kept inline so the test has no web-only imports.
+class Uint8ArrayReader {
+  constructor(private readonly bytes: Uint8Array) {}
+  read(offset: number, length: number): Promise<Uint8Array> {
+    return Promise.resolve(this.bytes.subarray(offset, offset + length));
+  }
+  size(): number {
+    return this.bytes.byteLength;
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PREAMBLE = '#ROSBAG V2.0\n';
@@ -225,8 +237,8 @@ describe('reindexBagFromBuffer', () => {
     const buffer = await loadFixtureBuffer('test_unindexed.bag');
     const result = reindexBagFromBuffer(buffer, decompress);
 
-    expect(result.blob).toBeInstanceOf(Blob);
-    expect(result.blob.size).toBeGreaterThan(0);
+    expect(result.bytes).toBeInstanceOf(Uint8Array);
+    expect(result.bytes.byteLength).toBeGreaterThan(0);
     expect(result.meta).toMatchObject({
       partial: false,
       chunksSkipped: 0,
@@ -241,7 +253,7 @@ describe('reindexBagFromBuffer', () => {
     const buffer = await loadFixtureBuffer('test_unindexed.bag');
     const result = reindexBagFromBuffer(buffer, decompress);
 
-    const reader = new BlobReader(result.blob);
+    const reader = new Uint8ArrayReader(result.bytes);
     const bag = new Bag(reader, {
       decompress: {
         bz2: (buf: Uint8Array) => bzip2Decompress(buf),
@@ -345,7 +357,7 @@ describe('reindexBagFromBuffer', () => {
     expect(result.meta.partial).toBe(true);
     expect(result.meta.warnings.some(w => w.code === 'missing-connection-metadata')).toBe(true);
 
-    const reader = new BlobReader(result.blob);
+    const reader = new Uint8ArrayReader(result.bytes);
     const bag = new Bag(reader, {});
     await bag.open();
 

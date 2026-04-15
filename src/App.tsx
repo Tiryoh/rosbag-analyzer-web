@@ -15,10 +15,9 @@ import {
   exportDiagnosticsToJSON,
   exportDiagnosticsToTXT,
   exportDiagnosticsToParquet,
-  downloadFile,
-  downloadBlob,
   filterDiagnostics,
 } from './rosbagUtils';
+import { fileToBagSource, downloadFile, downloadBytes } from './fileAdapter';
 import { useI18n } from './i18n';
 import logoUrl from './assets/logo.png';
 
@@ -92,7 +91,7 @@ function App() {
   const prevTimezoneRef = useRef(timezone);
 
   // Reindexed bag download state
-  const [reindexedBlob, setReindexedBlob] = useState<Blob | null>(null);
+  const [reindexedBytes, setReindexedBytes] = useState<Uint8Array | null>(null);
   const [reindexMeta, setReindexMeta] = useState<ReindexMeta | null>(null);
   const [reindexBlockers, setReindexBlockers] = useState<readonly ReindexWarning[] | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
@@ -114,21 +113,22 @@ function App() {
 
     setLoading(true);
     setError('');
-    setReindexedBlob(null);
+    setReindexedBytes(null);
     setReindexMeta(null);
     setReindexBlockers(null);
     setUploadedFileName(file.name);
 
     try {
       console.log('Calling loadMessages...');
-      const result = await loadMessages(file);
+      const source = await fileToBagSource(file);
+      const result = await loadMessages(source);
       console.log('loadMessages completed successfully');
       console.log('Messages loaded:', result.messages.length);
       console.log('Unique nodes:', result.uniqueNodes.size);
       console.log('Diagnostics:', result.diagnostics.length, 'hasDiagnostics:', result.hasDiagnostics);
 
-      if (result.reindexedBlob) {
-        setReindexedBlob(result.reindexedBlob);
+      if (result.reindexedBytes) {
+        setReindexedBytes(result.reindexedBytes);
       }
       if (result.reindexMeta) {
         setReindexMeta(result.reindexMeta);
@@ -588,7 +588,7 @@ function App() {
         )}
 
         {/* Reindexed notification */}
-        {reindexedBlob && hasData && !loading && (
+        {reindexedBytes && hasData && !loading && (
           <div
             className={`mb-8 p-4 border rounded-xl animate-fade-in ${
               reindexMeta?.partial
@@ -628,7 +628,7 @@ function App() {
             )}
             <button
               type="button"
-              onClick={() => downloadBlob(reindexedBlob, uploadedFileName || 'reindexed.bag')}
+              onClick={() => downloadBytes(reindexedBytes, uploadedFileName || 'reindexed.bag')}
               data-testid="download-reindexed"
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
                 reindexMeta?.partial

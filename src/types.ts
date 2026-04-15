@@ -1,5 +1,17 @@
 export type SeverityLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'UNKNOWN';
 
+/**
+ * Platform-agnostic input for the bag/MCAP loaders.
+ *
+ * Core loaders accept a BagSource so they do not depend on the browser `File`
+ * API. The `name` is used for format detection (extension) and diagnostics;
+ * `data` is the full byte content of the file.
+ */
+export interface BagSource {
+  name: string;
+  data: Uint8Array;
+}
+
 export interface RosoutMessage {
   timestamp: number;
   node: string;
