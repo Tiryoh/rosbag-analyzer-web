@@ -402,8 +402,8 @@ function formatTimestamp(timestamp: number, timezone: Timezone = 'local'): strin
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
 }
 
-function escapeCSV(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+export function escapeCSV(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
@@ -422,7 +422,7 @@ export function exportToCSV(messages: RosoutMessage[], timezone: Timezone = 'loc
     escapeCSV(msg.function || ''),
     escapeCSV((msg.topics || []).join(';'))
   ]);
-  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  return '\uFEFF' + [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
 
 export function exportToJSON(messages: RosoutMessage[], timezone: Timezone = 'local'): string {
@@ -460,7 +460,7 @@ export function exportDiagnosticsToCSV(diagnostics: DiagnosticStatusEntry[], tim
     escapeCSV(d.message),
     escapeCSV(d.values.map(v => `${v.key}=${v.value}`).join('; ')),
   ]);
-  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  return '\uFEFF' + [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
 
 export function exportDiagnosticsToJSON(diagnostics: DiagnosticStatusEntry[], timezone: Timezone = 'local'): string {

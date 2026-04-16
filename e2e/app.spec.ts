@@ -406,6 +406,47 @@ test.describe('Diagnostics table', () => {
     await page.getByRole('button', { name: 'Local' }).click();
     await expect(page.getByRole('button', { name: 'UTC' })).toBeVisible();
   });
+
+  test('detail grid items do not overlap when a value is longer than its column', async ({ page }) => {
+    // Expand the first diagnostics row (same pattern as the tests above).
+    const toggleButton = page.locator('table tbody button[aria-expanded]').first();
+    await toggleButton.click();
+    await expect(toggleButton).toHaveAttribute('aria-expanded', 'true');
+
+    // The fixture now includes a long path-like value
+    // (`last_heartbeat_source`) but the injected string below is
+    // deliberately longer and placed in the first grid item to create a
+    // controlled, deterministic overflow condition. CSS layout depends
+    // only on the rendered text, so mutating textContent is sufficient.
+    const kvItems = page.getByTestId('diag-detail-kv');
+    await expect(kvItems.first()).toBeVisible();
+    await kvItems.first().evaluate((el) => {
+      const valueSpan = el.querySelector('span:last-child');
+      if (valueSpan) {
+        valueSpan.textContent = '/auto_stop/slow_down_mid/brake_trigger/subsystem_with_a_long_name';
+      }
+    });
+
+    // Invariant: each grid item's content must fit inside its box.
+    //
+    // Tailwind's `grid-cols-N` uses `minmax(0, 1fr)`, so the grid item
+    // itself is always clipped to its track width. The user-visible
+    // overlap happens when the inner value <span> renders beyond the
+    // grid item's box (no wrapping, no clipping) and visually crosses
+    // into the next track's text. That condition is exactly
+    // `scrollWidth > clientWidth` on the grid item, which is what
+    // `min-w-0` + `break-words` + `col-span-full` on long pairs prevents.
+    const overflowing = await kvItems.evaluateAll((els) =>
+      els
+        .map((el) => ({
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+          text: el.textContent?.slice(0, 60) ?? '',
+        }))
+        .filter((info) => info.scrollWidth > info.clientWidth),
+    );
+    expect(overflowing).toEqual([]);
+  });
 });
 
 // --- Diagnostics export ---

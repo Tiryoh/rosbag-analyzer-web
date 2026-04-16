@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parquetReadObjects } from 'hyparquet';
 import { ReindexFailureError } from './reindexUtils';
-import { filterMessages, filterDiagnostics, exportToParquet, exportDiagnosticsToParquet, loadMessages } from './rosbagUtils';
+import {
+  filterMessages, filterDiagnostics,
+  exportToParquet, exportDiagnosticsToParquet,
+  exportToCSV, exportToJSON, exportToTXT,
+  exportDiagnosticsToCSV, exportDiagnosticsToJSON, exportDiagnosticsToTXT,
+  escapeCSV,
+  loadMessages,
+} from './rosbagUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 
 // -- Test fixtures --
@@ -422,6 +429,216 @@ describe('Parquet export', () => {
       message: 'OK',
     });
     expect(rows[1].values_json).toEqual([]);
+  });
+});
+
+// ==================== escapeCSV ====================
+
+describe('escapeCSV', () => {
+  it('returns plain string unchanged', () => {
+    expect(escapeCSV('hello')).toBe('hello');
+  });
+
+  it('wraps value containing comma in quotes', () => {
+    expect(escapeCSV('a,b')).toBe('"a,b"');
+  });
+
+  it('wraps and escapes double quotes', () => {
+    expect(escapeCSV('say "hi"')).toBe('"say ""hi"""');
+  });
+
+  it('wraps value containing newline', () => {
+    expect(escapeCSV('line1\nline2')).toBe('"line1\nline2"');
+  });
+
+  it('wraps value containing carriage return', () => {
+    // Per RFC 4180, CR must also trigger quoting (e.g. Windows CRLF in logs).
+    expect(escapeCSV('line1\rline2')).toBe('"line1\rline2"');
+    expect(escapeCSV('line1\r\nline2')).toBe('"line1\r\nline2"');
+  });
+
+  it('handles all special characters together', () => {
+    expect(escapeCSV('a,"b\nc')).toBe('"a,""b\nc"');
+  });
+});
+
+// ==================== exportToCSV ====================
+
+describe('exportToCSV', () => {
+  it('starts with UTF-8 BOM', () => {
+    const result = exportToCSV(rosoutMessages, 'utc');
+    expect(result.charCodeAt(0)).toBe(0xFEFF);
+  });
+
+  it('has correct header row', () => {
+    const result = exportToCSV(rosoutMessages, 'utc');
+    const lines = result.replace(/^\uFEFF/, '').split('\n');
+    expect(lines[0]).toBe('Timestamp,Time,Node,Severity,Message,File,Line,Function,Topics');
+  });
+
+  it('has correct number of rows', () => {
+    const result = exportToCSV(rosoutMessages, 'utc');
+    const lines = result.replace(/^\uFEFF/, '').split('\n');
+    expect(lines).toHaveLength(6); // 1 header + 5 data
+  });
+
+  it('first data row has expected values', () => {
+    const result = exportToCSV(rosoutMessages, 'utc');
+    const lines = result.replace(/^\uFEFF/, '').split('\n');
+    const cols = lines[1].split(',');
+    expect(cols[0]).toBe('100.000000');
+    expect(cols[1]).toBe('1970-01-01 00:01:40.000 UTC');
+    expect(cols[2]).toBe('/node_a');
+    expect(cols[3]).toBe('DEBUG');
+    expect(cols[4]).toBe('debug info here');
+  });
+});
+
+// ==================== exportToJSON ====================
+
+describe('exportToJSON', () => {
+  it('produces valid JSON with correct count', () => {
+    const result = exportToJSON(rosoutMessages, 'utc');
+    const parsed = JSON.parse(result);
+    expect(parsed).toHaveLength(5);
+  });
+
+  it('first entry has expected field values', () => {
+    const result = exportToJSON(rosoutMessages, 'utc');
+    const parsed = JSON.parse(result);
+    expect(parsed[0]).toMatchObject({
+      timestamp: 100,
+      time: '1970-01-01 00:01:40.000 UTC',
+      node: '/node_a',
+      severity: 'DEBUG',
+      message: 'debug info here',
+    });
+  });
+
+  it('optional fields default correctly', () => {
+    const result = exportToJSON(rosoutMessages, 'utc');
+    const parsed = JSON.parse(result);
+    expect(parsed[0].file).toBe('');
+    expect(parsed[0].line).toBe(0);
+    expect(parsed[0].function).toBe('');
+    expect(parsed[0].topics).toEqual([]);
+  });
+});
+
+// ==================== exportToTXT ====================
+
+describe('exportToTXT', () => {
+  it('has correct number of lines', () => {
+    const result = exportToTXT(rosoutMessages, 'utc');
+    expect(result.split('\n')).toHaveLength(5);
+  });
+
+  it('first line has correct format', () => {
+    const result = exportToTXT(rosoutMessages, 'utc');
+    const firstLine = result.split('\n')[0];
+    expect(firstLine).toBe('[1970-01-01 00:01:40.000 UTC] [DEBUG] [/node_a]: debug info here');
+  });
+
+  it('includes file location when present', () => {
+    const msgWithFile: RosoutMessage = {
+      timestamp: 100, node: '/node_a', severity: 'INFO', message: 'test',
+      file: 'test_node.cpp', line: 42,
+    };
+    const result = exportToTXT([msgWithFile], 'utc');
+    expect(result).toContain('(test_node.cpp:42)');
+  });
+});
+
+// ==================== exportDiagnosticsToCSV ====================
+
+describe('exportDiagnosticsToCSV', () => {
+  it('starts with UTF-8 BOM', () => {
+    const result = exportDiagnosticsToCSV(diagEntries, 'utc');
+    expect(result.charCodeAt(0)).toBe(0xFEFF);
+  });
+
+  it('has correct header row', () => {
+    const result = exportDiagnosticsToCSV(diagEntries, 'utc');
+    const lines = result.replace(/^\uFEFF/, '').split('\n');
+    expect(lines[0]).toBe('Timestamp,Time,Name,Level,Message,Values');
+  });
+
+  it('uses human-readable level names', () => {
+    const result = exportDiagnosticsToCSV(diagEntries, 'utc');
+    const lines = result.replace(/^\uFEFF/, '').split('\n');
+    // Assert on the Level column (index 3) specifically, not the full
+    // line — `toContain('OK')` would also match the message field
+    // 'OK running', making the assertion meaningless for that row.
+    expect(lines[1].split(',')[3]).toBe('OK');
+    expect(lines[2].split(',')[3]).toBe('WARN');
+    expect(lines[3].split(',')[3]).toBe('ERROR');
+    expect(lines[4].split(',')[3]).toBe('STALE');
+  });
+
+  it('formats values column correctly', () => {
+    const entryWithValues: DiagnosticStatusEntry = {
+      timestamp: 500, name: '/sensor/imu', level: 0, message: 'OK',
+      values: [{ key: 'rate', value: '100' }, { key: 'temp', value: '42' }],
+    };
+    const result = exportDiagnosticsToCSV([entryWithValues], 'utc');
+    const lines = result.replace(/^\uFEFF/, '').split('\n');
+    expect(lines[1]).toContain('rate=100; temp=42');
+  });
+});
+
+// ==================== exportDiagnosticsToJSON ====================
+
+describe('exportDiagnosticsToJSON', () => {
+  it('produces valid JSON with correct count', () => {
+    const result = exportDiagnosticsToJSON(diagEntries, 'utc');
+    const parsed = JSON.parse(result);
+    expect(parsed).toHaveLength(4);
+  });
+
+  it('uses human-readable level names', () => {
+    const result = exportDiagnosticsToJSON(diagEntries, 'utc');
+    const parsed = JSON.parse(result);
+    expect(parsed[0].level).toBe('OK');
+    expect(parsed[1].level).toBe('WARN');
+    expect(parsed[2].level).toBe('ERROR');
+    expect(parsed[3].level).toBe('STALE');
+  });
+
+  it('preserves values array structure', () => {
+    const entryWithValues: DiagnosticStatusEntry = {
+      timestamp: 500, name: '/sensor/imu', level: 0, message: 'OK',
+      values: [{ key: 'rate', value: '100' }, { key: 'temp', value: '42' }],
+    };
+    const result = exportDiagnosticsToJSON([entryWithValues], 'utc');
+    const parsed = JSON.parse(result);
+    expect(parsed[0].values).toEqual([
+      { key: 'rate', value: '100' },
+      { key: 'temp', value: '42' },
+    ]);
+  });
+});
+
+// ==================== exportDiagnosticsToTXT ====================
+
+describe('exportDiagnosticsToTXT', () => {
+  it('has correct number of lines', () => {
+    const result = exportDiagnosticsToTXT(diagEntries, 'utc');
+    expect(result.split('\n')).toHaveLength(4);
+  });
+
+  it('first line has correct format', () => {
+    const result = exportDiagnosticsToTXT(diagEntries, 'utc');
+    const firstLine = result.split('\n')[0];
+    expect(firstLine).toBe('[1970-01-01 00:01:40.000 UTC] [OK] /sensor/lidar: OK running');
+  });
+
+  it('appends values when present', () => {
+    const entryWithValues: DiagnosticStatusEntry = {
+      timestamp: 500, name: '/sensor/imu', level: 0, message: 'OK',
+      values: [{ key: 'rate', value: '100' }, { key: 'temp', value: '42' }],
+    };
+    const result = exportDiagnosticsToTXT([entryWithValues], 'utc');
+    expect(result).toContain('{rate=100, temp=42}');
   });
 });
 

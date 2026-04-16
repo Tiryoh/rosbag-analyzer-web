@@ -75,25 +75,34 @@ rosout_data = [
 
 diag_data = [
     # (offset_sec, [(name, level, message, {key: value})])
+    # NOTE: Keep in sync with generate_test_bag.py — the .bag and .mcap
+    # fixtures are assumed to contain identical data by the e2e tests.
     (0.0, [
+        # 4 values — exercises lg:grid-cols-4 full-row case.
         ("/sensor/lidar", DiagnosticStatus.OK, "Running normally",
-         {"frequency": "10.0", "packets_received": "1000"}),
+         {"frequency": "10.0", "packets_received": "1000",
+          "scan_rate_hz": "10", "serial_number": "VLP16-123456"}),
         ("/sensor/camera", DiagnosticStatus.OK, "Connected",
          {"fps": "30", "resolution": "1920x1080"}),
     ]),
     (1.0, [
         ("/sensor/lidar", DiagnosticStatus.OK, "Running normally",
-         {"frequency": "10.0", "packets_received": "2000"}),
+         {"frequency": "10.0", "packets_received": "2000",
+          "scan_rate_hz": "10", "serial_number": "VLP16-123456"}),
         ("/sensor/camera", DiagnosticStatus.WARN, "Low frame rate",
          {"fps": "12", "resolution": "1920x1080"}),
     ]),
     (2.0, [
+        # 3 values, one realistically long path — exercises grid cell
+        # overflow regression.
         ("/sensor/lidar", DiagnosticStatus.ERROR, "Connection lost",
-         {"frequency": "0.0", "error_count": "5"}),
+         {"frequency": "0.0", "error_count": "5",
+          "last_heartbeat_source": "/rover/sensors/lidar_front_driver/heartbeat_monitor_node"}),
         ("/sensor/camera", DiagnosticStatus.OK, "Recovered",
          {"fps": "28", "resolution": "1920x1080"}),
     ]),
     (3.0, [
+        # 1 value — single-value case.
         ("/sensor/lidar", DiagnosticStatus.STALE, "No data received",
          {"last_update": "2.5s ago"}),
         ("/motor/left", DiagnosticStatus.WARN, "High temperature",
