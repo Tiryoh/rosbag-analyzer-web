@@ -413,14 +413,11 @@ test.describe('Diagnostics table', () => {
     await toggleButton.click();
     await expect(toggleButton).toHaveAttribute('aria-expanded', 'true');
 
-    // The committed fixture only contains short diagnostic values (e.g.
-    // "10.0", "1920x1080") that comfortably fit any grid column, so it
-    // cannot by itself reproduce the real-world overflow where long
-    // path-like values (e.g. "/auto_stop/slow_down_mid/brake_trigger")
-    // overflowed their grid cell and visually overlapped the next pair.
-    // Inject a realistic long value into one item to force the condition —
-    // CSS layout depends only on the rendered text, so mutating
-    // textContent is sufficient to exercise the layout fix.
+    // The fixture now includes a long path-like value
+    // (`last_heartbeat_source`) but the injected string below is
+    // deliberately longer and placed in the first grid item to create a
+    // controlled, deterministic overflow condition. CSS layout depends
+    // only on the rendered text, so mutating textContent is sufficient.
     const kvItems = page.getByTestId('diag-detail-kv');
     await expect(kvItems.first()).toBeVisible();
     await kvItems.first().evaluate((el) => {
@@ -438,7 +435,7 @@ test.describe('Diagnostics table', () => {
     // grid item's box (no wrapping, no clipping) and visually crosses
     // into the next track's text. That condition is exactly
     // `scrollWidth > clientWidth` on the grid item, which is what
-    // `min-w-0` + `break-all` on the value span prevents.
+    // `min-w-0` + `break-words` + `col-span-full` on long pairs prevents.
     const overflowing = await kvItems.evaluateAll((els) =>
       els
         .map((el) => ({

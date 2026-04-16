@@ -566,10 +566,13 @@ describe('exportDiagnosticsToCSV', () => {
   it('uses human-readable level names', () => {
     const result = exportDiagnosticsToCSV(diagEntries, 'utc');
     const lines = result.replace(/^\uFEFF/, '').split('\n');
-    expect(lines[1]).toContain('OK');
-    expect(lines[2]).toContain('WARN');
-    expect(lines[3]).toContain('ERROR');
-    expect(lines[4]).toContain('STALE');
+    // Assert on the Level column (index 3) specifically, not the full
+    // line — `toContain('OK')` would also match the message field
+    // 'OK running', making the assertion meaningless for that row.
+    expect(lines[1].split(',')[3]).toBe('OK');
+    expect(lines[2].split(',')[3]).toBe('WARN');
+    expect(lines[3].split(',')[3]).toBe('ERROR');
+    expect(lines[4].split(',')[3]).toBe('STALE');
   });
 
   it('formats values column correctly', () => {
