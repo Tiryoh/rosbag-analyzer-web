@@ -85,6 +85,15 @@ The built files will be in `dist/` folder. You can serve them with any static we
 - **Tailwind CSS** - Utility-first styling
 - **Lucide Icons** - Beautiful icon set
 
+## 🔗 Related Projects
+
+ROS 2 workflows around `rosout` and diagnostics:
+
+- [whill-labs/ros2-diag-monitor](https://github.com/whill-labs/ros2-diag-monitor) - Terminal UI for monitoring ROS 2 diagnostics over SSH.
+- [araitaiga/rosout_mcp](https://github.com/araitaiga/rosout_mcp) - MCP server for querying `/rosout` logs from ROS 2 bag files.
+- [ros-visualization/rqt_console](https://github.com/ros-visualization/rqt_console) - ROS 2 `rqt` plugin for viewing and filtering `rosout` messages.
+- [ros-visualization/rqt_robot_monitor](https://github.com/ros-visualization/rqt_robot_monitor) - ROS 2 `rqt` plugin for viewing aggregated diagnostics.
+
 ## 🔧 Development
 
 ### Prerequisites
