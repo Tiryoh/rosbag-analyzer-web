@@ -12,16 +12,16 @@ import {
   escapeCSV,
   loadMessages,
 } from './rosbagUtils';
-import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 
 // -- Test fixtures --
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function loadFixtureFile(name: string): Promise<File> {
-  const fixturePath = path.resolve(__dirname, '../e2e/fixtures', name);
+async function loadFixtureSource(name: string): Promise<BagSource> {
+  const fixturePath = path.resolve(__dirname, '../../e2e/fixtures', name);
   const buffer = await readFile(fixturePath);
-  return new File([buffer], name);
+  return { name, data: new Uint8Array(buffer) };
 }
 
 const rosoutMessages: RosoutMessage[] = [
@@ -645,49 +645,21 @@ describe('exportDiagnosticsToTXT', () => {
 // ==================== loadMessages error handling ====================
 
 describe('loadMessages error handling', () => {
-  it('rejects empty (0-byte) file', async () => {
-    const emptyFile = new File([], 'empty.bag');
-    await expect(loadMessages(emptyFile)).rejects.toThrow('Empty file');
+  it('rejects empty (0-byte) bag source', async () => {
+    await expect(loadMessages({ name: 'empty.bag', data: new Uint8Array(0) })).rejects.toThrow('Empty file');
   });
 
-  it('rejects empty mcap file', async () => {
-    const emptyFile = new File([], 'empty.mcap');
-    await expect(loadMessages(emptyFile)).rejects.toThrow('Empty file');
-  });
-
-  it('shows file size in error when large file fails to read', async () => {
-    const largeFile = {
-      name: 'large.mcap',
-      size: 1024 * 1024 * 1024, // 1 GB
-      arrayBuffer: () => {
-        const err = new DOMException('The requested file could not be read', 'NotReadableError');
-        return Promise.reject(err);
-      },
-      slice: () => new Blob(),
-    } as unknown as File;
-    await expect(loadMessages(largeFile)).rejects.toThrow(/1024 MB.*too large/);
-  });
-
-  it('does not alter error for small files that fail to read', async () => {
-    const smallFile = {
-      name: 'small.bag',
-      size: 1024, // 1 KB
-      arrayBuffer: () => {
-        const err = new DOMException('The requested file could not be read', 'NotReadableError');
-        return Promise.reject(err);
-      },
-      slice: () => new Blob(),
-    } as unknown as File;
-    await expect(loadMessages(smallFile)).rejects.toThrow('The requested file could not be read');
+  it('rejects empty mcap source', async () => {
+    await expect(loadMessages({ name: 'empty.mcap', data: new Uint8Array(0) })).rejects.toThrow('Empty file');
   });
 });
 
 describe('loadMessages reindex metadata', () => {
   it('returns non-partial reindex metadata for a valid unindexed bag', async () => {
-    const file = await loadFixtureFile('test_unindexed.bag');
-    const result = await loadMessages(file);
+    const source = await loadFixtureSource('test_unindexed.bag');
+    const result = await loadMessages(source);
 
-    expect(result.reindexedBlob).toBeInstanceOf(Blob);
+    expect(result.reindexedBytes).toBeInstanceOf(Uint8Array);
     expect(result.reindexMeta).toMatchObject({
       partial: false,
       chunksSeen: 1,
@@ -698,16 +670,15 @@ describe('loadMessages reindex metadata', () => {
   });
 
   it('returns partial reindex metadata when a readable bag has truncated tail bytes', async () => {
-    const file = await loadFixtureFile('test_unindexed.bag');
-    const originalBuffer = new Uint8Array(await file.arrayBuffer());
-    const corruptedBuffer = new Uint8Array(originalBuffer.length + 3);
-    corruptedBuffer.set(originalBuffer, 0);
-    corruptedBuffer.set([0xde, 0xad, 0xbe], originalBuffer.length);
-    const corruptedFile = new File([corruptedBuffer], 'test_unindexed_truncated_tail.bag');
+    const original = await loadFixtureSource('test_unindexed.bag');
+    const corruptedBuffer = new Uint8Array(original.data.length + 3);
+    corruptedBuffer.set(original.data, 0);
+    corruptedBuffer.set([0xde, 0xad, 0xbe], original.data.length);
+    const corruptedSource: BagSource = { name: 'test_unindexed_truncated_tail.bag', data: corruptedBuffer };
 
-    const result = await loadMessages(corruptedFile);
+    const result = await loadMessages(corruptedSource);
 
-    expect(result.reindexedBlob).toBeInstanceOf(Blob);
+    expect(result.reindexedBytes).toBeInstanceOf(Uint8Array);
     expect(result.reindexMeta?.partial).toBe(true);
     expect(result.reindexMeta?.chunksSeen).toBe(1);
     expect(result.reindexMeta?.warnings.some(warning => warning.code === 'truncated-tail')).toBe(true);
@@ -715,14 +686,14 @@ describe('loadMessages reindex metadata', () => {
   });
 
   it('surfaces recovery blockers when no chunk can be recovered', async () => {
-    const file = await loadFixtureFile('test_truncated.bag');
-    await expect(loadMessages(file)).rejects.toBeInstanceOf(ReindexFailureError);
+    const source = await loadFixtureSource('test_truncated.bag');
+    await expect(loadMessages(source)).rejects.toBeInstanceOf(ReindexFailureError);
   });
 
   it('surfaces recovery blocker details for unreadable truncated bags', async () => {
-    const file = await loadFixtureFile('test_truncated.bag');
+    const source = await loadFixtureSource('test_truncated.bag');
     try {
-      await loadMessages(file);
+      await loadMessages(source);
       expect.fail('Expected loadMessages to throw');
     } catch (error) {
       expect(error).toBeInstanceOf(ReindexFailureError);

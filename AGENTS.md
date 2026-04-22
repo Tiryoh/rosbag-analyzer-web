@@ -13,17 +13,28 @@ Browser-based ROS1/ROS2 bag analyzer. Parses `.bag` files (ROS1) and `.mcap`/`.m
 - `npm run lint` — ESLint (zero warnings allowed)
 - `npm run test` — Run tests with Vitest
 - `npm run test:e2e` — Run Playwright end-to-end tests
-- `npm run test -- src/rosbagUtils.test.ts` — Run a single test file
+- `npm run test -- src/core/rosbagUtils.test.ts` — Run a single test file
 
 ## Architecture
 
-Single-page React+TypeScript app using Vite and Tailwind CSS.
+Single-page React+TypeScript app using Vite and Tailwind CSS. Source code is split into two top-level directories:
 
-- **`src/App.tsx`** — Monolithic UI component handling file upload (drag & drop), filtering, statistics, tab navigation (rosout vs diagnostics), and CSV/JSON/TXT/Parquet export.
-- **`src/rosbagUtils.ts`** — Core logic: bag file parsing (`loadRosbagMessages`), file format dispatch (`loadMessages`), message filtering (`filterMessages`, `filterDiagnostics`), and export functions. This is the main module to test.
-- **`src/mcapUtils.ts`** — MCAP file parsing (`loadMcapMessages`). Uses `@mcap/core` for reading, `@foxglove/rosmsg2-serialization` for CDR deserialization, and `fzstd` for zstd decompression.
-- **`src/reindexUtils.ts`** — ROS1 bag reindexing and partial recovery for unindexed or damaged bag files. Rebuilds `IndexData`, `Connection`, and `ChunkInfo` records in-browser.
-- **`src/types.ts`** — Shared types (`RosoutMessage`, `DiagnosticStatusEntry`, `FilterConfig`) with `SeverityLevel` string union type (`'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'`) and Tailwind color mappings.
+- **`src/core/`** — Platform-agnostic parsing and filtering. Accepts a `BagSource` (`{ name, data: Uint8Array }`) rather than a DOM `File`, so the same code runs in the browser today and can be reused from Node-based TUIs/CLIs later. Must not import from `src/web/`.
+- **`src/web/`** — Browser-only React UI, styling, and DOM-side adapters (File upload, downloads).
+
+Core modules:
+
+- **`src/core/rosbagUtils.ts`** — ROS1 bag parsing (`loadRosbagMessages`), file format dispatch (`loadMessages`), message filtering (`filterMessages`, `filterDiagnostics`), and export functions (CSV/JSON/TXT/Parquet). Main module to test.
+- **`src/core/mcapUtils.ts`** — MCAP file parsing (`loadMcapMessages`). Uses `@mcap/core` for reading, `@foxglove/rosmsg2-serialization` for CDR deserialization, and `fzstd` for zstd decompression.
+- **`src/core/reindexUtils.ts`** — ROS1 bag reindexing and partial recovery for unindexed or damaged bag files. Rebuilds `IndexData`, `Connection`, and `ChunkInfo` records in-memory.
+- **`src/core/types.ts`** — Core types (`BagSource`, `RosoutMessage`, `DiagnosticStatusEntry`, `SeverityLevel`) and level→name mappings.
+
+Web modules:
+
+- **`src/web/App.tsx`** — Monolithic UI component handling file upload (drag & drop), filtering, statistics, tab navigation (rosout vs diagnostics), and export triggering.
+- **`src/web/fileAdapter.ts`** — Bridges the DOM `File` API to `BagSource` (`fileToBagSource`) and provides download helpers (`downloadFile`, `downloadBytes`).
+- **`src/web/severityStyles.ts`** — Tailwind class strings for severity/diagnostic levels (kept out of core so non-UI reuse doesn't pull in UI styles).
+- **`src/web/i18n.ts`** — English/Japanese dictionaries and `useI18n` hook.
 
 ## Constraints
 

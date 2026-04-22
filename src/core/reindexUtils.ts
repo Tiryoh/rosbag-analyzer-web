@@ -70,7 +70,8 @@ export interface ReindexMeta {
 }
 
 export interface ReindexResult {
-  blob: Blob;
+  /** Serialized reindexed bag as raw bytes. Callers that need a browser Blob should wrap it themselves. */
+  bytes: Uint8Array;
   meta: ReindexMeta;
 }
 
@@ -486,10 +487,10 @@ function buildBagHeaderRecord(indexPos: number, connCount: number, chunkCount: n
 // --- Main reindex function ---
 
 export function reindexBagFromBuffer(
-  buffer: ArrayBuffer,
+  buffer: ArrayBuffer | Uint8Array,
   decompress: Decompress,
 ): ReindexResult {
-  const data = new Uint8Array(buffer);
+  const data = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
 
   // Verify preamble
   const preamble = textDecoder.decode(data.subarray(0, PREAMBLE_LENGTH));
@@ -717,7 +718,7 @@ export function reindexBagFromBuffer(
   output.set(finalBagHeader, PREAMBLE_LENGTH);
 
   return {
-    blob: new Blob([output], { type: 'application/octet-stream' }),
+    bytes: output,
     meta: {
       partial: warnings.length > 0 || chunksRecovered < chunksSeen,
       warnings,
