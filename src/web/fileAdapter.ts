@@ -21,7 +21,8 @@ export async function fileToBagSource(file: File): Promise<BagSource> {
     if (file.size > 512 * 1024 * 1024 && err instanceof DOMException && err.name === 'NotReadableError') {
       throw new Error(
         `Failed to read file (${sizeMB} MB). The file is too large to load into browser memory.\n\n` +
-        'Try splitting the file into smaller parts or using a command-line tool.'
+        'Try splitting the file into smaller parts or using a command-line tool.',
+        { cause: err },
       );
     }
     throw err;
@@ -30,7 +31,7 @@ export async function fileToBagSource(file: File): Promise<BagSource> {
 
 /** Download serialized content (CSV/JSON/TXT/Parquet) as a file. */
 export function downloadFile(content: string | Uint8Array, filename: string, type: string) {
-  const blob = new Blob([content as unknown as BlobPart], { type });
+  const blob = new Blob([content as BlobPart], { type });
   downloadBlob(blob, filename);
 }
 
@@ -48,5 +49,5 @@ export function downloadBlob(blob: Blob, filename: string) {
 
 /** Convenience for downloading raw bytes (e.g. a reindexed bag) as a file. */
 export function downloadBytes(bytes: Uint8Array, filename: string, type = 'application/octet-stream') {
-  downloadBlob(new Blob([bytes as unknown as BlobPart], { type }), filename);
+  downloadBlob(new Blob([bytes as BlobPart], { type }), filename);
 }
