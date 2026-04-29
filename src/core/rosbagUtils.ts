@@ -1,11 +1,31 @@
 import Bag from '@foxglove/rosbag/dist/cjs/Bag';
-import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
 import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { ReindexMeta } from './reindexUtils';
-import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
+
+/**
+ * In-memory Filelike reader for `@foxglove/rosbag`. Uses only standard JS
+ * (no Blob / FileReader), so it works in browser, Node, and worker contexts.
+ */
+class Uint8ArrayReader {
+  constructor(private bytes: Uint8Array) {}
+
+  read(offset: number, length: number): Promise<Uint8Array> {
+    return Promise.resolve(this.bytes.subarray(offset, offset + length));
+  }
+
+  size(): number {
+    return this.bytes.byteLength;
+  }
+
+  /** Release the underlying bytes so the buffer can be garbage-collected. */
+  release(): void {
+    this.bytes = new Uint8Array(0);
+  }
+}
 
 type Timezone = 'local' | 'utc';
 
@@ -51,35 +71,33 @@ type ReadMessageResult<T> = {
   timestamp: BagTimestamp;
 };
 
-export async function loadRosbagMessages(file: File): Promise<{
+export async function loadRosbagMessages(source: BagSource): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
-  reindexedBlob?: Blob;
+  reindexedBytes?: Uint8Array;
   reindexMeta?: ReindexMeta;
 }> {
   const messages: RosoutMessage[] = [];
   const uniqueNodes = new Set<string>();
 
   console.log('=== Starting ROSbag load ===');
-  console.log('File name:', file.name);
-  console.log('File size:', file.size, 'bytes');
-  console.log('File type:', file.type);
+  console.log('File name:', source.name);
+  console.log('File size:', source.data.byteLength, 'bytes');
 
   try {
-    console.log('Reading file as ArrayBuffer...');
-    let arrayBuffer: ArrayBuffer | null = await file.arrayBuffer();
-    console.log('ArrayBuffer loaded, size:', arrayBuffer.byteLength);
+    const bytes = source.data;
+    console.log('Bytes loaded, size:', bytes.byteLength);
 
     // Check bag file header
-    const headerView = new Uint8Array(arrayBuffer, 0, Math.min(100, arrayBuffer.byteLength));
-    const headerStr = new TextDecoder().decode(headerView.slice(0, 13));
+    const headerView = bytes.subarray(0, Math.min(100, bytes.byteLength));
+    const headerStr = new TextDecoder().decode(headerView.subarray(0, 13));
     console.log('Bag file header:', headerStr);
-    console.log('First 20 bytes:', Array.from(headerView.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log('First 20 bytes:', Array.from(headerView.subarray(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
-    console.log('Creating BlobReader...');
-    let reader: BlobReader | null = new BlobReader(new Blob([arrayBuffer]));
+    console.log('Creating in-memory reader...');
+    let reader: Uint8ArrayReader | null = new Uint8ArrayReader(bytes);
 
     console.log('Initializing decompression handlers...');
 
@@ -97,7 +115,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       },
     });
 
-    console.log('Opening bag with BlobReader...');
+    console.log('Opening bag...');
     await bag.open();
     console.log('✓ Bag opened successfully');
 
@@ -109,21 +127,21 @@ export async function loadRosbagMessages(file: File): Promise<{
 
     // Check if bag is indexed — if not, reindex in-memory and use the reindexed bag
     let activeBag = bag!;
-    let reindexedBlob: Blob | undefined;
+    let reindexedBytes: Uint8Array | undefined;
     let reindexMeta: ReindexMeta | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
       console.log('Bag file is unindexed. Reindexing in memory...');
       try {
         const { reindexBagFromBuffer } = await import('./reindexUtils');
-        const reindexResult = reindexBagFromBuffer(arrayBuffer, {
+        const reindexResult = reindexBagFromBuffer(bytes, {
           bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
           lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
         });
-        reindexedBlob = reindexResult.blob;
+        reindexedBytes = reindexResult.bytes;
         reindexMeta = reindexResult.meta;
         console.log('Reindex complete. Reopening reindexed bag...');
 
-        const reindexedReader = new BlobReader(reindexedBlob);
+        const reindexedReader = new Uint8ArrayReader(reindexedBytes);
         const reindexedBag = new Bag(reindexedReader, {
           decompress: {
             bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
@@ -133,10 +151,10 @@ export async function loadRosbagMessages(file: File): Promise<{
         await reindexedBag.open();
 
         activeBag = reindexedBag;
-        // Release original bag/reader/buffer to free memory
+        // Release original bag/reader to free memory
         bag = null;
+        reader?.release();
         reader = null;
-        arrayBuffer = null;
         console.log('Reindexed bag opened successfully');
       } catch (reindexError) {
         const { isReindexFailureLike } = await import('./reindexUtils');
@@ -257,7 +275,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics state changes`);
     }
 
-    return { messages, uniqueNodes, diagnostics, hasDiagnostics, reindexedBlob, reindexMeta };
+    return { messages, uniqueNodes, diagnostics, hasDiagnostics, reindexedBytes, reindexMeta };
   } catch (error) {
     console.error('!!! Error loading rosbag !!!');
     console.error('Error type:', error?.constructor?.name);
@@ -522,51 +540,21 @@ export function exportDiagnosticsToParquet(
   return new Uint8Array(buf);
 }
 
-export async function loadMessages(file: File): Promise<{
+export async function loadMessages(source: BagSource): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
-  reindexedBlob?: Blob;
+  reindexedBytes?: Uint8Array;
   reindexMeta?: ReindexMeta;
 }> {
-  if (file.size === 0) {
+  if (source.data.byteLength === 0) {
     throw new Error('Empty file. The selected file contains no data.');
   }
-  const name = file.name.toLowerCase();
-  try {
-    if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
-      const { loadMcapMessages } = await import('./mcapUtils');
-      return await loadMcapMessages(file);
-    }
-    return await loadRosbagMessages(file);
-  } catch (err) {
-    // Large files may fail to load into memory
-    const sizeMB = (file.size / (1024 * 1024)).toFixed(0);
-    if (file.size > 512 * 1024 * 1024 && err instanceof DOMException && err.name === 'NotReadableError') {
-      throw new Error(
-        `Failed to read file (${sizeMB} MB). The file is too large to load into browser memory.\n\n` +
-        'Try splitting the file into smaller parts or using a command-line tool.'
-      );
-    }
-    throw err;
+  const name = source.name.toLowerCase();
+  if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
+    const { loadMcapMessages } = await import('./mcapUtils');
+    return await loadMcapMessages(source);
   }
-}
-
-/** Download serialized content (CSV/JSON/TXT/Parquet) as a file. */
-export function downloadFile(content: string | Uint8Array, filename: string, type: string) {
-  const blob = new Blob([content as unknown as BlobPart], { type });
-  downloadBlob(blob, filename);
-}
-
-/** Download an existing Blob (e.g. reindexed bag) as a file. */
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  return await loadRosbagMessages(source);
 }

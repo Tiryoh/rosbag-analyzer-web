@@ -5,22 +5,20 @@ import lz4 from 'lz4js';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
-import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 import { ROS2_SEVERITY } from './types';
 
-class BlobReadable implements IReadable {
-  private buffer: ArrayBuffer;
-
-  constructor(buffer: ArrayBuffer) {
-    this.buffer = buffer;
-  }
+class Uint8ArrayReadable implements IReadable {
+  constructor(private readonly bytes: Uint8Array) {}
 
   async size(): Promise<bigint> {
-    return BigInt(this.buffer.byteLength);
+    return BigInt(this.bytes.byteLength);
   }
 
   async read(offset: bigint, length: bigint): Promise<Uint8Array> {
-    return new Uint8Array(this.buffer, Number(offset), Number(length));
+    const start = Number(offset);
+    const end = start + Number(length);
+    return this.bytes.subarray(start, end);
   }
 }
 
@@ -179,8 +177,8 @@ class McapMessageCollector {
   }
 }
 
-async function readIndexed(buffer: ArrayBuffer, decompressHandlers: DecompressHandlers) {
-  const readable = new BlobReadable(buffer);
+async function readIndexed(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
+  const readable = new Uint8ArrayReadable(bytes);
   const reader = await McapIndexedReader.Initialize({ readable, decompressHandlers });
 
   const collector = new McapMessageCollector();
@@ -199,9 +197,9 @@ async function readIndexed(buffer: ArrayBuffer, decompressHandlers: DecompressHa
   return collector.result();
 }
 
-function readStreaming(buffer: ArrayBuffer, decompressHandlers: DecompressHandlers) {
+function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
   const streamReader = new McapStreamReader({ decompressHandlers });
-  streamReader.append(new Uint8Array(buffer));
+  streamReader.append(bytes);
 
   const collector = new McapMessageCollector();
 
@@ -223,30 +221,22 @@ function readStreaming(buffer: ArrayBuffer, decompressHandlers: DecompressHandle
   return collector.result();
 }
 
-export async function loadMcapMessages(file: File): Promise<{
+export async function loadMcapMessages(source: BagSource): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
 }> {
   console.log('=== Starting MCAP load ===');
-  console.log('File name:', file.name);
-  console.log('File size:', file.size, 'bytes');
+  console.log('File name:', source.name);
+  console.log('File size:', source.data.byteLength, 'bytes');
 
   try {
-    let buffer = await file.arrayBuffer();
+    let bytes = source.data;
 
     // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD)
-    if (buffer.byteLength >= 4) {
-      const magic = new Uint8Array(buffer, 0, 4);
-      if (magic[0] === 0x28 && magic[1] === 0xb5 && magic[2] === 0x2f && magic[3] === 0xfd) {
-        const decompressed = zstdDecompress(new Uint8Array(buffer));
-        if (decompressed.byteOffset === 0 && decompressed.byteLength === decompressed.buffer.byteLength) {
-          buffer = decompressed.buffer as ArrayBuffer;
-        } else {
-          buffer = decompressed.slice().buffer as ArrayBuffer;
-        }
-      }
+    if (bytes.byteLength >= 4 && bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) {
+      bytes = zstdDecompress(bytes);
     }
 
     const decompressHandlers: DecompressHandlers = {
@@ -257,14 +247,14 @@ export async function loadMcapMessages(file: File): Promise<{
     // Try indexed reader first, fall back to streaming for non-indexed or unchunked files
     let result;
     try {
-      result = await readIndexed(buffer, decompressHandlers);
+      result = await readIndexed(bytes, decompressHandlers);
       // Indexed reader may succeed but yield 0 messages for unchunked MCAPs;
       // fall back to streaming which reads Message records directly.
       if (result.messages.length === 0 && !result.hasDiagnostics) {
-        result = readStreaming(buffer, decompressHandlers);
+        result = readStreaming(bytes, decompressHandlers);
       }
     } catch {
-      result = readStreaming(buffer, decompressHandlers);
+      result = readStreaming(bytes, decompressHandlers);
     }
 
     console.log(`✓ Successfully loaded ${result.messages.length} rosout messages from ${result.uniqueNodes.size} nodes`);
