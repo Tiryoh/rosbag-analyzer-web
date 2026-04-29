@@ -8,19 +8,24 @@ Browser-based ROS1/ROS2 bag analyzer. Parses `.bag` files (ROS1) and `.mcap`/`.m
 
 ## Development Environment
 
-The dev environment is managed with Nix flakes. Enter it with `nix develop` — this provides Node.js 22 and [aube](https://aube.en.dev) (a fast Node.js package manager) pinned via `flake.lock`.
+Two ways to set up the dev environment:
 
-Use `aube` instead of `npm` for installing dependencies and running package scripts. It is compatible with the existing `package-lock.json`, so no migration is required.
+- **Nix users**: `nix develop` provides Node.js 22 pinned via `flake.lock`.
+- **mise users**: `mise install` provides Node.js 22 and [aube](https://aube.en.dev) (a fast Node.js package manager) pinned via `mise.toml`.
+
+`aube` is optional — it's `package-lock.json`-compatible, so `npm` works equally well. Use whichever you prefer.
 
 ## Commands
 
-- `aube install` — Install dependencies (compatible with `package-lock.json`)
-- `aube run dev` — Start dev server
-- `aube run build` — Type-check with `tsc` then build with Vite
-- `aube run lint` — ESLint (zero warnings allowed)
-- `aube run test` — Run tests with Vitest
-- `aube run test:e2e` — Run Playwright end-to-end tests
-- `aube run test -- src/rosbagUtils.test.ts` — Run a single test file
+Substitute `aube` for `npm` if you have it installed.
+
+- `npm install` — Install dependencies
+- `npm run dev` — Start dev server
+- `npm run build` — Type-check with `tsc` then build with Vite
+- `npm run lint` — ESLint (zero warnings allowed)
+- `npm run test` — Run tests with Vitest
+- `npm run test:e2e` — Run Playwright end-to-end tests
+- `npm run test -- src/rosbagUtils.test.ts` — Run a single test file
 
 ## Architecture
 
