@@ -1,7 +1,9 @@
 # ADR: Core と Web を分離し、Bag loaders をブラウザ非依存にする
 
-- Status: Accepted
+- Status: Accepted (一部は ADR 0009 にて supersede)
 - Date: 2026-04-16
+
+> **Update (2026-04-29):** `BagSource` の形状（Decision Details §1）、`fileToBagSource` が `File.arrayBuffer()` と 512 MB ガードを担う点（§3 / §7）、Alternative 2、Verification §5 は [ADR 0009](0009-lazy-bagsource-via-blob-slice.md) で再評価され、オフセット指定の遅延 Reader (`{ name, size, read(offset, length) }`) に置き換えられた。Core / Web 物理分割や `severityStyles.ts` 分離、`reindexedBytes: Uint8Array` 返却などその他の決定はそのまま有効。
 
 ## Context
 
