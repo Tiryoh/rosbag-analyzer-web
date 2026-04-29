@@ -157,7 +157,7 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
         const { isReindexFailureLike } = await import('./reindexUtils');
         if (isReindexFailureLike(reindexError)) throw reindexError;
         const reason = reindexError instanceof Error ? reindexError.message : String(reindexError);
-        throw new BagLoadError('error.failedToReindex', { reason });
+        throw new BagLoadError('error.failedToReindex', { reason }, { cause: reindexError });
       }
     }
 

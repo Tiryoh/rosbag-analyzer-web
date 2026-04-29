@@ -21,8 +21,12 @@ export interface BagSource {
 export class BagLoadError extends Error {
   readonly code: string;
   readonly params: Record<string, string | number>;
-  constructor(code: string, params: Record<string, string | number> = {}) {
-    super(code);
+  constructor(
+    code: string,
+    params: Record<string, string | number> = {},
+    options: { cause?: unknown } = {},
+  ) {
+    super(code, options.cause !== undefined ? { cause: options.cause } : undefined);
     this.name = 'BagLoadError';
     this.code = code;
     this.params = params;

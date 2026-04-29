@@ -212,11 +212,17 @@ async function readIndexed(readable: IReadable, decompressHandlers: DecompressHa
     collector.addChannel(channel.id, channel.schemaId, channel.topic);
   }
 
+  // Track total Message records seen — distinct from "messages collected", which
+  // only counts rosout/diagnostics. The fallback to the streaming reader should
+  // fire only when the indexed reader produced no records at all (e.g. unchunked
+  // MCAPs), not when the file is valid but only contains unrelated topics.
+  let totalMessageRecords = 0;
   for await (const message of reader.readMessages()) {
+    totalMessageRecords++;
     collector.processMessage(message.channelId, message.logTime, message.data);
   }
 
-  return collector.result();
+  return { ...collector.result(), totalMessageRecords };
 }
 
 function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
@@ -272,7 +278,10 @@ export async function loadMcapMessages(source: BagSource): Promise<{
       const bytes = zstdDecompress(compressed);
       try {
         result = await readIndexed(new Uint8ArrayReadable(bytes), decompressHandlers);
-        if (result.messages.length === 0 && !result.hasDiagnostics) {
+        // Indexed reader may succeed but yield 0 records for unchunked MCAPs;
+        // fall back to streaming only when no Message records were seen at all
+        // (a file with unrelated topics still has records, just not rosout/diag).
+        if (result.totalMessageRecords === 0) {
           result = readStreaming(bytes, decompressHandlers);
         }
       } catch {
@@ -282,9 +291,7 @@ export async function loadMcapMessages(source: BagSource): Promise<{
       const readable = new BagSourceReadable(source);
       try {
         result = await readIndexed(readable, decompressHandlers);
-        // Indexed reader may succeed but yield 0 messages for unchunked MCAPs;
-        // fall back to streaming which reads records sequentially.
-        if (result.messages.length === 0 && !result.hasDiagnostics) {
+        if (result.totalMessageRecords === 0) {
           const bytes = await source.read(0, source.size);
           result = readStreaming(bytes, decompressHandlers);
         }

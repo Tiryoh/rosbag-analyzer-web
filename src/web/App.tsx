@@ -44,6 +44,17 @@ function formatReindexWarningDetail(t: (key: string) => string, warning: Reindex
   return warning.compression ? `${label} (${warning.compression}): ${warning.detail}` : `${label}: ${warning.detail}`;
 }
 
+/**
+ * Concatenate a translated base message with the underlying error's detail.
+ * Strips a trailing `.` or `。` from the base so the result reads naturally
+ * across both EN and JA (`Failed to load bag file: <reason>` / `bag ファイルの読み込みに失敗しました: <reason>`).
+ */
+function appendErrorDetail(base: string, err: unknown): string {
+  if (!(err instanceof Error)) return base;
+  const trimmed = base.replace(/[.。]$/, '');
+  return `${trimmed}: ${err.message}`;
+}
+
 function App() {
   const { lang, setLang, t, tf } = useI18n();
   const [messages, setMessages] = useState<RosoutMessage[]>([]);
@@ -170,8 +181,7 @@ function App() {
       } else if (err instanceof BagLoadError) {
         setError(tf(err.code, err.params));
       } else {
-        const detail = err instanceof Error ? `: ${err.message}` : '';
-        setError(t('error.failedToLoad') + detail);
+        setError(appendErrorDetail(t('error.failedToLoad'), err));
       }
     } finally {
       setLoading(false);
@@ -285,8 +295,7 @@ function App() {
       if (err instanceof BagLoadError) {
         setError(tf(err.code, err.params));
       } else {
-        const detail = err instanceof Error ? `: ${err.message}` : '';
-        setError(t('error.failedToExport') + detail);
+        setError(appendErrorDetail(t('error.failedToExport'), err));
       }
     }
   };
