@@ -3,7 +3,7 @@ import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { ReindexMeta } from './reindexUtils';
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from './types';
 import { BagLoadError, DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
 /** In-memory Filelike for the reindex re-open path (after building a Uint8Array). */
@@ -80,6 +80,7 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
+  availableTopics: TopicInfo[];
   reindexedBytes?: Uint8Array;
   reindexMeta?: ReindexMeta;
 }> {
@@ -179,12 +180,9 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
     console.log('Total rosout topics found:', rosoutTopics.length);
     console.log('Total diagnostics topics found:', diagnosticsTopics.length);
 
-    if (rosoutTopics.length === 0 && diagnosticsTopics.length === 0) {
-      const availableTopics = Array.from(activeBag.connections.values())
-        .map((conn: BagConnectionView) => `  - ${conn.topic} [${conn.type ?? 'unknown'}]`)
-        .join('\n');
-      throw new BagLoadError('error.noTopicsFound', { topics: availableTopics });
-    }
+    const availableTopics: TopicInfo[] = Array.from(activeBag.connections.values()).map(
+      (conn: BagConnectionView) => ({ topic: conn.topic, type: conn.type ?? 'unknown' }),
+    );
 
     const decompressOptions = {
       bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
@@ -264,7 +262,7 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
       console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics state changes`);
     }
 
-    return { messages, uniqueNodes, diagnostics, hasDiagnostics, reindexedBytes, reindexMeta };
+    return { messages, uniqueNodes, diagnostics, hasDiagnostics, availableTopics, reindexedBytes, reindexMeta };
   } catch (error) {
     console.error('!!! Error loading rosbag !!!');
     console.error('Error type:', error?.constructor?.name);
@@ -534,6 +532,7 @@ export async function loadMessages(source: BagSource): Promise<{
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
+  availableTopics: TopicInfo[];
   reindexedBytes?: Uint8Array;
   reindexMeta?: ReindexMeta;
 }> {

@@ -5,7 +5,7 @@ import lz4 from 'lz4js';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from './types';
 import { ROS2_SEVERITY } from './types';
 
 class Uint8ArrayReadable implements IReadable {
@@ -83,6 +83,7 @@ class McapMessageCollector {
   private schemasById = new Map<number, { name: string; data: Uint8Array }>();
   private pendingChannels = new Map<number, number>(); // channelId → schemaId (for channels received before their schema)
   private lastDiagState = new Map<string, { level: number; message: string; valuesKey: string }>();
+  private channelTopics = new Map<number, { topic: string; schemaId: number }>();
 
   messages: RosoutMessage[] = [];
   uniqueNodes = new Set<string>();
@@ -100,12 +101,20 @@ class McapMessageCollector {
     }
   }
 
-  addChannel(id: number, schemaId: number) {
+  addChannel(id: number, schemaId: number, topic: string) {
+    this.channelTopics.set(id, { topic, schemaId });
     this.buildReaderForChannel(id, schemaId);
     // If schema wasn't available yet, queue for later
     if (!this.channelReaders.has(id)) {
       this.pendingChannels.set(id, schemaId);
     }
+  }
+
+  availableTopics(): TopicInfo[] {
+    return Array.from(this.channelTopics.values()).map(({ topic, schemaId }) => ({
+      topic,
+      type: this.schemasById.get(schemaId)?.name ?? 'unknown',
+    }));
   }
 
   private buildReaderForChannel(channelId: number, schemaId: number) {
@@ -186,6 +195,7 @@ class McapMessageCollector {
       uniqueNodes: this.uniqueNodes,
       diagnostics: this.diagnostics,
       hasDiagnostics: this.hasDiagnostics,
+      availableTopics: this.availableTopics(),
     };
   }
 }
@@ -199,7 +209,7 @@ async function readIndexed(readable: IReadable, decompressHandlers: DecompressHa
     collector.addSchema(schema.id, schema.name, schema.data);
   }
   for (const channel of reader.channelsById.values()) {
-    collector.addChannel(channel.id, channel.schemaId);
+    collector.addChannel(channel.id, channel.schemaId, channel.topic);
   }
 
   for await (const message of reader.readMessages()) {
@@ -222,7 +232,7 @@ function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers
         collector.addSchema(record.id, record.name, record.data);
         break;
       case 'Channel':
-        collector.addChannel(record.id, record.schemaId);
+        collector.addChannel(record.id, record.schemaId, record.topic);
         break;
       case 'Message':
         collector.processMessage(record.channelId, record.logTime, record.data);
@@ -238,6 +248,7 @@ export async function loadMcapMessages(source: BagSource): Promise<{
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
+  availableTopics: TopicInfo[];
 }> {
   console.log('=== Starting MCAP load ===');
   console.log('File name:', source.name);

@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from '../core/reindexUtils';
-import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from '../core/types';
+import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from '../core/types';
 import { BagLoadError, SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
 import { SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './severityStyles';
 import {
@@ -95,6 +95,8 @@ function App() {
   const [reindexMeta, setReindexMeta] = useState<ReindexMeta | null>(null);
   const [reindexBlockers, setReindexBlockers] = useState<readonly ReindexWarning[] | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [loadCompleted, setLoadCompleted] = useState(false);
+  const [availableTopics, setAvailableTopics] = useState<TopicInfo[]>([]);
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
@@ -117,6 +119,8 @@ function App() {
     setReindexMeta(null);
     setReindexBlockers(null);
     setUploadedFileName(file.name);
+    setLoadCompleted(false);
+    setAvailableTopics([]);
 
     try {
       console.log('Calling loadMessages...');
@@ -155,6 +159,8 @@ function App() {
       setDiagTimeEnd('');
       setExportIgnoresTimeFilter(false);
       setActiveTab(result.messages.length > 0 ? 'rosout' : 'diagnostics');
+      setAvailableTopics(result.availableTopics);
+      setLoadCompleted(true);
       console.log('State updated successfully');
     } catch (err) {
       console.error('Error in handleFileUpload:', err);
@@ -578,7 +584,7 @@ function App() {
         )}
 
         {/* Success */}
-        {hasData && !loading && (
+        {loadCompleted && !loading && hasData && (
           <div className="mb-8 text-center animate-fade-in">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-2 rounded-full">
               {hasDiagnostics
@@ -592,6 +598,32 @@ function App() {
                     nodeCount: uniqueNodes.size,
                   })}
             </p>
+          </div>
+        )}
+
+        {/* Loaded but empty */}
+        {loadCompleted && !loading && !hasData && (
+          <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl animate-fade-in" data-testid="empty-result-panel">
+            <p className="text-sm text-amber-800 dark:text-amber-300 mb-2">
+              {tf('status.loadedNoMessages', { fileName: uploadedFileName })}
+            </p>
+            {availableTopics.length > 0 ? (
+              <details className="text-xs text-amber-800 dark:text-amber-300">
+                <summary className="cursor-pointer select-none font-medium">
+                  {tf('status.otherTopics', { count: availableTopics.length })}
+                </summary>
+                <ul className="mt-2 space-y-0.5 font-mono leading-relaxed" data-testid="available-topics">
+                  {availableTopics.map((info, i) => (
+                    <li key={`${info.topic}-${i}`}>
+                      <span>{info.topic}</span>
+                      <span className="text-amber-700 dark:text-amber-400/80"> [{info.type}]</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : (
+              <p className="text-xs text-amber-800 dark:text-amber-300">{t('status.noOtherTopics')}</p>
+            )}
           </div>
         )}
 

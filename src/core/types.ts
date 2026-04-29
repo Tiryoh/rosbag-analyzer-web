@@ -60,6 +60,12 @@ export const ROS2_SEVERITY: Record<number, SeverityLevel> = {
 
 export const SEVERITY_LEVELS: SeverityLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'UNKNOWN'];
 
+/** A topic/channel discovered in the loaded file (for the "no relevant topics" notice). */
+export interface TopicInfo {
+  topic: string;
+  type: string;
+}
+
 // Diagnostics types
 export interface DiagnosticStatusEntry {
   timestamp: number;

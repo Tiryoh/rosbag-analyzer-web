@@ -710,3 +710,48 @@ describe('loadMessages reindex metadata', () => {
     }
   });
 });
+
+// ==================== availableTopics ====================
+
+describe('loadMessages availableTopics', () => {
+  it('returns rosout/diagnostics topics from a ROS1 bag', async () => {
+    const source = await loadFixtureSource('test_sample.bag');
+    const result = await loadMessages(source);
+    const topicNames = result.availableTopics.map(t => t.topic);
+    expect(topicNames.some(name => name.includes('rosout'))).toBe(true);
+    expect(topicNames).toContain('/diagnostics_agg');
+    // Result still has matching messages so the success path is unaffected.
+    expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('returns rosout/diagnostics topics from an MCAP bag', async () => {
+    const source = await loadFixtureSource('test_sample.mcap');
+    const result = await loadMessages(source);
+    const topicNames = result.availableTopics.map(t => t.topic);
+    expect(topicNames).toContain('/rosout');
+    expect(topicNames).toContain('/diagnostics_agg');
+    expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('returns 0 messages and lists unrelated topics when MCAP has no rosout/diagnostics', async () => {
+    const source = await loadFixtureSource('test_sample_no_rosout.mcap');
+    const result = await loadMessages(source);
+    expect(result.messages).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.hasDiagnostics).toBe(false);
+    expect(result.availableTopics).toEqual([
+      { topic: '/sensor/lidar/points', type: 'sensor_msgs/msg/PointCloud2' },
+    ]);
+  });
+
+  it('returns 0 messages and lists unrelated topics when ROS1 bag has no rosout/diagnostics', async () => {
+    const source = await loadFixtureSource('test_sample_no_rosout.bag');
+    const result = await loadMessages(source);
+    expect(result.messages).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.hasDiagnostics).toBe(false);
+    expect(result.availableTopics).toEqual([
+      { topic: '/sensor/lidar/scan', type: 'sensor_msgs/LaserScan' },
+    ]);
+  });
+});
