@@ -6,8 +6,20 @@ This file provides guidance to coding agents working with code in this repositor
 
 Browser-based ROS1/ROS2 bag analyzer. Parses `.bag` files (ROS1) and `.mcap`/`.mcap.zstd` files (ROS2) entirely client-side. No backend required. Deployed to Cloudflare Pages.
 
+## Development Environment
+
+Two ways to set up the dev environment:
+
+- **Nix users**: `nix develop` provides Node.js 22 pinned via `flake.lock`.
+- **mise users**: `mise install` provides Node.js 22 and [aube](https://aube.en.dev) (a fast Node.js package manager) pinned via `mise.toml`.
+
+`aube` is optional — it's `package-lock.json`-compatible, so `npm` works equally well. Use whichever you prefer.
+
 ## Commands
 
+Substitute `aube` for `npm` if you have it installed.
+
+- `npm install` — Install dependencies
 - `npm run dev` — Start dev server
 - `npm run build` — Type-check with `tsc` then build with Vite
 - `npm run lint` — ESLint (zero warnings allowed)
