@@ -22,6 +22,19 @@ class Uint8ArrayReadable implements IReadable {
   }
 }
 
+/** Lazy IReadable adapter — random-access reads stream from BagSource. */
+class BagSourceReadable implements IReadable {
+  constructor(private readonly source: BagSource) {}
+
+  async size(): Promise<bigint> {
+    return BigInt(this.source.size);
+  }
+
+  async read(offset: bigint, length: bigint): Promise<Uint8Array> {
+    return this.source.read(Number(offset), Number(length));
+  }
+}
+
 // ROS2 rcl_interfaces/msg/Log fields
 interface Ros2LogMessage {
   stamp?: { sec: number; nanosec: number };
@@ -177,8 +190,7 @@ class McapMessageCollector {
   }
 }
 
-async function readIndexed(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
-  const readable = new Uint8ArrayReadable(bytes);
+async function readIndexed(readable: IReadable, decompressHandlers: DecompressHandlers) {
   const reader = await McapIndexedReader.Initialize({ readable, decompressHandlers });
 
   const collector = new McapMessageCollector();
@@ -229,32 +241,46 @@ export async function loadMcapMessages(source: BagSource): Promise<{
 }> {
   console.log('=== Starting MCAP load ===');
   console.log('File name:', source.name);
-  console.log('File size:', source.data.byteLength, 'bytes');
+  console.log('File size:', source.size, 'bytes');
 
   try {
-    let bytes = source.data;
-
-    // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD)
-    if (bytes.byteLength >= 4 && bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) {
-      bytes = zstdDecompress(bytes);
-    }
-
     const decompressHandlers: DecompressHandlers = {
       zstd: (data) => zstdDecompress(new Uint8Array(data)),
       lz4: (data) => lz4.decompress(new Uint8Array(data)),
     };
 
-    // Try indexed reader first, fall back to streaming for non-indexed or unchunked files
+    // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD).
+    // For zstd-wrapped MCAPs we must materialize the full file to decompress;
+    // for plain MCAPs we keep the lazy IReadable so peak memory stays low.
+    const head = await source.read(0, Math.min(4, source.size));
+    const isZstd = head.byteLength >= 4 && head[0] === 0x28 && head[1] === 0xb5 && head[2] === 0x2f && head[3] === 0xfd;
+
     let result;
-    try {
-      result = await readIndexed(bytes, decompressHandlers);
-      // Indexed reader may succeed but yield 0 messages for unchunked MCAPs;
-      // fall back to streaming which reads Message records directly.
-      if (result.messages.length === 0 && !result.hasDiagnostics) {
+    if (isZstd) {
+      const compressed = await source.read(0, source.size);
+      const bytes = zstdDecompress(compressed);
+      try {
+        result = await readIndexed(new Uint8ArrayReadable(bytes), decompressHandlers);
+        if (result.messages.length === 0 && !result.hasDiagnostics) {
+          result = readStreaming(bytes, decompressHandlers);
+        }
+      } catch {
         result = readStreaming(bytes, decompressHandlers);
       }
-    } catch {
-      result = readStreaming(bytes, decompressHandlers);
+    } else {
+      const readable = new BagSourceReadable(source);
+      try {
+        result = await readIndexed(readable, decompressHandlers);
+        // Indexed reader may succeed but yield 0 messages for unchunked MCAPs;
+        // fall back to streaming which reads records sequentially.
+        if (result.messages.length === 0 && !result.hasDiagnostics) {
+          const bytes = await source.read(0, source.size);
+          result = readStreaming(bytes, decompressHandlers);
+        }
+      } catch {
+        const bytes = await source.read(0, source.size);
+        result = readStreaming(bytes, decompressHandlers);
+      }
     }
 
     console.log(`✓ Successfully loaded ${result.messages.length} rosout messages from ${result.uniqueNodes.size} nodes`);

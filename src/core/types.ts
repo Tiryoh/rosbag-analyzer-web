@@ -4,12 +4,29 @@ export type SeverityLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'UNK
  * Platform-agnostic input for the bag/MCAP loaders.
  *
  * Core loaders accept a BagSource so they do not depend on the browser `File`
- * API. The `name` is used for format detection (extension) and diagnostics;
- * `data` is the full byte content of the file.
+ * API. `read(offset, length)` is a lazy random-access primitive: in the
+ * browser it is backed by `Blob.slice()`, so a multi-GB file is never
+ * materialized as a single Uint8Array. `size` is the total byte length.
  */
 export interface BagSource {
   name: string;
-  data: Uint8Array;
+  size: number;
+  read(offset: number, length: number): Promise<Uint8Array>;
+}
+
+/**
+ * Structured error from core loaders. The `code` is an i18n key (resolved at
+ * the UI boundary); `params` carries placeholder values for `tf()`.
+ */
+export class BagLoadError extends Error {
+  readonly code: string;
+  readonly params: Record<string, string | number>;
+  constructor(code: string, params: Record<string, string | number> = {}) {
+    super(code);
+    this.name = 'BagLoadError';
+    this.code = code;
+    this.params = params;
+  }
 }
 
 export interface RosoutMessage {

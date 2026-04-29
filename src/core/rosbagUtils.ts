@@ -4,12 +4,9 @@ import lz4 from 'lz4js';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { ReindexMeta } from './reindexUtils';
 import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
-import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
+import { BagLoadError, DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
-/**
- * In-memory Filelike reader for `@foxglove/rosbag`. Uses only standard JS
- * (no Blob / FileReader), so it works in browser, Node, and worker contexts.
- */
+/** In-memory Filelike for the reindex re-open path (after building a Uint8Array). */
 class Uint8ArrayReader {
   constructor(private bytes: Uint8Array) {}
 
@@ -21,10 +18,17 @@ class Uint8ArrayReader {
     return this.bytes.byteLength;
   }
 
-  /** Release the underlying bytes so the buffer can be garbage-collected. */
   release(): void {
     this.bytes = new Uint8Array(0);
   }
+}
+
+/** Adapt a lazy `BagSource` to `@foxglove/rosbag`'s Filelike interface. */
+function bagSourceToFilelike(source: BagSource) {
+  return {
+    read: (offset: number, length: number) => source.read(offset, length),
+    size: () => source.size,
+  };
 }
 
 type Timezone = 'local' | 'utc';
@@ -84,25 +88,17 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
 
   console.log('=== Starting ROSbag load ===');
   console.log('File name:', source.name);
-  console.log('File size:', source.data.byteLength, 'bytes');
+  console.log('File size:', source.size, 'bytes');
 
   try {
-    const bytes = source.data;
-    console.log('Bytes loaded, size:', bytes.byteLength);
-
-    // Check bag file header
-    const headerView = bytes.subarray(0, Math.min(100, bytes.byteLength));
+    // Peek the magic bytes via lazy read (no full-file load).
+    const headerView = await source.read(0, Math.min(100, source.size));
     const headerStr = new TextDecoder().decode(headerView.subarray(0, 13));
     console.log('Bag file header:', headerStr);
     console.log('First 20 bytes:', Array.from(headerView.subarray(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
-    console.log('Creating in-memory reader...');
-    let reader: Uint8ArrayReader | null = new Uint8ArrayReader(bytes);
-
-    console.log('Initializing decompression handlers...');
-
-    console.log('Creating Bag with decompression support...');
-    let bag: InstanceType<typeof Bag> | null = new Bag(reader, {
+    console.log('Creating lazy reader from BagSource...');
+    let bag: InstanceType<typeof Bag> | null = new Bag(bagSourceToFilelike(source), {
       decompress: {
         bz2: (buffer: Uint8Array) => {
           console.log('Decompressing bz2 chunk, size:', buffer.length);
@@ -130,10 +126,13 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
     let reindexedBytes: Uint8Array | undefined;
     let reindexMeta: ReindexMeta | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
-      console.log('Bag file is unindexed. Reindexing in memory...');
+      console.log('Bag file is unindexed. Materializing bytes for reindex...');
+      // Reindex needs a full-buffer scan, so materialize the file here only
+      // (the indexed fast-path above never pays this cost).
+      const fullBytes = await source.read(0, source.size);
       try {
         const { reindexBagFromBuffer } = await import('./reindexUtils');
-        const reindexResult = reindexBagFromBuffer(bytes, {
+        const reindexResult = reindexBagFromBuffer(fullBytes, {
           bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
           lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
         });
@@ -151,19 +150,13 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
         await reindexedBag.open();
 
         activeBag = reindexedBag;
-        // Release original bag/reader to free memory
         bag = null;
-        reader?.release();
-        reader = null;
         console.log('Reindexed bag opened successfully');
       } catch (reindexError) {
         const { isReindexFailureLike } = await import('./reindexUtils');
         if (isReindexFailureLike(reindexError)) throw reindexError;
-        const wrapped = new Error(
-          `Failed to reindex bag file: ${reindexError instanceof Error ? reindexError.message : String(reindexError)}`,
-        );
-        (wrapped as unknown as { cause: unknown }).cause = reindexError;
-        throw wrapped;
+        const reason = reindexError instanceof Error ? reindexError.message : String(reindexError);
+        throw new BagLoadError('error.failedToReindex', { reason });
       }
     }
 
@@ -190,11 +183,7 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
       const availableTopics = Array.from(activeBag.connections.values())
         .map((conn: BagConnectionView) => `  - ${conn.topic} [${conn.type ?? 'unknown'}]`)
         .join('\n');
-
-      throw new Error(
-        `No rosout or diagnostics topics found in bag file.\n\nAvailable topics:\n${availableTopics}\n\n` +
-        `Looking for topics containing 'rosout' or 'diagnostics' (e.g. '/diagnostics' or '/diagnostics_agg') or of type 'diagnostic_msgs/DiagnosticArray'`
-      );
+      throw new BagLoadError('error.noTopicsFound', { topics: availableTopics });
     }
 
     const decompressOptions = {
@@ -548,8 +537,8 @@ export async function loadMessages(source: BagSource): Promise<{
   reindexedBytes?: Uint8Array;
   reindexMeta?: ReindexMeta;
 }> {
-  if (source.data.byteLength === 0) {
-    throw new Error('Empty file. The selected file contains no data.');
+  if (source.size === 0) {
+    throw new BagLoadError('error.emptyFile');
   }
   const name = source.name.toLowerCase();
   if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {

@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from '../core/reindexUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from '../core/types';
-import { SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
+import { BagLoadError, SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
 import { SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './severityStyles';
 import {
   loadMessages,
@@ -120,7 +120,7 @@ function App() {
 
     try {
       console.log('Calling loadMessages...');
-      const source = await fileToBagSource(file);
+      const source = fileToBagSource(file);
       const result = await loadMessages(source);
       console.log('loadMessages completed successfully');
       console.log('Messages loaded:', result.messages.length);
@@ -161,9 +161,11 @@ function App() {
       if (isReindexFailureLike(err)) {
         setReindexBlockers(err.blockers);
         setError(t('error.reindexFailed'));
+      } else if (err instanceof BagLoadError) {
+        setError(tf(err.code, err.params));
       } else {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load bag file';
-        setError(errorMessage);
+        const detail = err instanceof Error ? `: ${err.message}` : '';
+        setError(t('error.failedToLoad') + detail);
       }
     } finally {
       setLoading(false);
@@ -229,7 +231,7 @@ function App() {
             break;
           default: {
             const exhaustiveFormat: never = format;
-            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+            throw new BagLoadError('error.unsupportedFormat', { format: String(exhaustiveFormat) });
           }
         }
       } else {
@@ -267,15 +269,19 @@ function App() {
             break;
           default: {
             const exhaustiveFormat: never = format;
-            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+            throw new BagLoadError('error.unsupportedFormat', { format: String(exhaustiveFormat) });
           }
         }
       }
 
       downloadFile(content, filename, type);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to export file';
-      setError(errorMessage);
+      if (err instanceof BagLoadError) {
+        setError(tf(err.code, err.params));
+      } else {
+        const detail = err instanceof Error ? `: ${err.message}` : '';
+        setError(t('error.failedToExport') + detail);
+      }
     }
   };
 
@@ -539,7 +545,9 @@ function App() {
             <div className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full loading-bar" />
             </div>
-            <p className="mt-3 text-center text-sm text-surface-500 dark:text-surface-400">{t('loading.message')}</p>
+            <p className="mt-3 text-center text-sm text-surface-500 dark:text-surface-400">
+              {uploadedFileName ? tf('loading.withFileName', { fileName: uploadedFileName }) : t('loading.message')}
+            </p>
           </div>
         )}
 
