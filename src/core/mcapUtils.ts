@@ -5,7 +5,7 @@ import lz4 from 'lz4js';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from './types';
 import { ROS2_SEVERITY } from './types';
 
 class Uint8ArrayReadable implements IReadable {
@@ -19,6 +19,19 @@ class Uint8ArrayReadable implements IReadable {
     const start = Number(offset);
     const end = start + Number(length);
     return this.bytes.subarray(start, end);
+  }
+}
+
+/** Lazy IReadable adapter — random-access reads stream from BagSource. */
+class BagSourceReadable implements IReadable {
+  constructor(private readonly source: BagSource) {}
+
+  async size(): Promise<bigint> {
+    return BigInt(this.source.size);
+  }
+
+  async read(offset: bigint, length: bigint): Promise<Uint8Array> {
+    return this.source.read(Number(offset), Number(length));
   }
 }
 
@@ -70,6 +83,7 @@ class McapMessageCollector {
   private schemasById = new Map<number, { name: string; data: Uint8Array }>();
   private pendingChannels = new Map<number, number>(); // channelId → schemaId (for channels received before their schema)
   private lastDiagState = new Map<string, { level: number; message: string; valuesKey: string }>();
+  private channelTopics = new Map<number, { topic: string; schemaId: number }>();
 
   messages: RosoutMessage[] = [];
   uniqueNodes = new Set<string>();
@@ -87,12 +101,20 @@ class McapMessageCollector {
     }
   }
 
-  addChannel(id: number, schemaId: number) {
+  addChannel(id: number, schemaId: number, topic: string) {
+    this.channelTopics.set(id, { topic, schemaId });
     this.buildReaderForChannel(id, schemaId);
     // If schema wasn't available yet, queue for later
     if (!this.channelReaders.has(id)) {
       this.pendingChannels.set(id, schemaId);
     }
+  }
+
+  availableTopics(): TopicInfo[] {
+    return Array.from(this.channelTopics.values()).map(({ topic, schemaId }) => ({
+      topic,
+      type: this.schemasById.get(schemaId)?.name ?? 'unknown',
+    }));
   }
 
   private buildReaderForChannel(channelId: number, schemaId: number) {
@@ -173,12 +195,12 @@ class McapMessageCollector {
       uniqueNodes: this.uniqueNodes,
       diagnostics: this.diagnostics,
       hasDiagnostics: this.hasDiagnostics,
+      availableTopics: this.availableTopics(),
     };
   }
 }
 
-async function readIndexed(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
-  const readable = new Uint8ArrayReadable(bytes);
+async function readIndexed(readable: IReadable, decompressHandlers: DecompressHandlers) {
   const reader = await McapIndexedReader.Initialize({ readable, decompressHandlers });
 
   const collector = new McapMessageCollector();
@@ -187,14 +209,20 @@ async function readIndexed(bytes: Uint8Array, decompressHandlers: DecompressHand
     collector.addSchema(schema.id, schema.name, schema.data);
   }
   for (const channel of reader.channelsById.values()) {
-    collector.addChannel(channel.id, channel.schemaId);
+    collector.addChannel(channel.id, channel.schemaId, channel.topic);
   }
 
+  // Track total Message records seen — distinct from "messages collected", which
+  // only counts rosout/diagnostics. The fallback to the streaming reader should
+  // fire only when the indexed reader produced no records at all (e.g. unchunked
+  // MCAPs), not when the file is valid but only contains unrelated topics.
+  let totalMessageRecords = 0;
   for await (const message of reader.readMessages()) {
+    totalMessageRecords++;
     collector.processMessage(message.channelId, message.logTime, message.data);
   }
 
-  return collector.result();
+  return { ...collector.result(), totalMessageRecords };
 }
 
 function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
@@ -210,7 +238,7 @@ function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers
         collector.addSchema(record.id, record.name, record.data);
         break;
       case 'Channel':
-        collector.addChannel(record.id, record.schemaId);
+        collector.addChannel(record.id, record.schemaId, record.topic);
         break;
       case 'Message':
         collector.processMessage(record.channelId, record.logTime, record.data);
@@ -226,35 +254,51 @@ export async function loadMcapMessages(source: BagSource): Promise<{
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
+  availableTopics: TopicInfo[];
 }> {
   console.log('=== Starting MCAP load ===');
   console.log('File name:', source.name);
-  console.log('File size:', source.data.byteLength, 'bytes');
+  console.log('File size:', source.size, 'bytes');
 
   try {
-    let bytes = source.data;
-
-    // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD)
-    if (bytes.byteLength >= 4 && bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) {
-      bytes = zstdDecompress(bytes);
-    }
-
     const decompressHandlers: DecompressHandlers = {
       zstd: (data) => zstdDecompress(new Uint8Array(data)),
       lz4: (data) => lz4.decompress(new Uint8Array(data)),
     };
 
-    // Try indexed reader first, fall back to streaming for non-indexed or unchunked files
+    // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD).
+    // For zstd-wrapped MCAPs we must materialize the full file to decompress;
+    // for plain MCAPs we keep the lazy IReadable so peak memory stays low.
+    const head = await source.read(0, Math.min(4, source.size));
+    const isZstd = head.byteLength >= 4 && head[0] === 0x28 && head[1] === 0xb5 && head[2] === 0x2f && head[3] === 0xfd;
+
     let result;
-    try {
-      result = await readIndexed(bytes, decompressHandlers);
-      // Indexed reader may succeed but yield 0 messages for unchunked MCAPs;
-      // fall back to streaming which reads Message records directly.
-      if (result.messages.length === 0 && !result.hasDiagnostics) {
+    if (isZstd) {
+      const compressed = await source.read(0, source.size);
+      const bytes = zstdDecompress(compressed);
+      try {
+        result = await readIndexed(new Uint8ArrayReadable(bytes), decompressHandlers);
+        // Indexed reader may succeed but yield 0 records for unchunked MCAPs;
+        // fall back to streaming only when no Message records were seen at all
+        // (a file with unrelated topics still has records, just not rosout/diag).
+        if (result.totalMessageRecords === 0) {
+          result = readStreaming(bytes, decompressHandlers);
+        }
+      } catch {
         result = readStreaming(bytes, decompressHandlers);
       }
-    } catch {
-      result = readStreaming(bytes, decompressHandlers);
+    } else {
+      const readable = new BagSourceReadable(source);
+      try {
+        result = await readIndexed(readable, decompressHandlers);
+        if (result.totalMessageRecords === 0) {
+          const bytes = await source.read(0, source.size);
+          result = readStreaming(bytes, decompressHandlers);
+        }
+      } catch {
+        const bytes = await source.read(0, source.size);
+        result = readStreaming(bytes, decompressHandlers);
+      }
     }
 
     console.log(`✓ Successfully loaded ${result.messages.length} rosout messages from ${result.uniqueNodes.size} nodes`);

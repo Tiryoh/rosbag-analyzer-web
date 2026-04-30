@@ -9,24 +9,21 @@
 import type { BagSource } from '../core/types';
 
 /**
- * Read a DOM `File` into a `BagSource`. Wraps large-file read failures so the
- * UI can show a helpful memory-pressure message instead of a raw DOMException.
+ * Wrap a DOM `File` as a `BagSource`. The underlying `File` is not loaded into
+ * memory: `read(offset, length)` calls `file.slice(...).arrayBuffer()` which
+ * the browser implements as a lazy range read. This lets multi-GB bags be
+ * parsed with peak memory proportional to the chunk being parsed, not the
+ * whole file.
  */
-export async function fileToBagSource(file: File): Promise<BagSource> {
-  try {
-    const buffer = await file.arrayBuffer();
-    return { name: file.name, data: new Uint8Array(buffer) };
-  } catch (err) {
-    const sizeMB = (file.size / (1024 * 1024)).toFixed(0);
-    if (file.size > 512 * 1024 * 1024 && err instanceof DOMException && err.name === 'NotReadableError') {
-      throw new Error(
-        `Failed to read file (${sizeMB} MB). The file is too large to load into browser memory.\n\n` +
-        'Try splitting the file into smaller parts or using a command-line tool.',
-        { cause: err },
-      );
-    }
-    throw err;
-  }
+export function fileToBagSource(file: File): BagSource {
+  return {
+    name: file.name,
+    size: file.size,
+    read: async (offset, length) => {
+      const buf = await file.slice(offset, offset + length).arrayBuffer();
+      return new Uint8Array(buf);
+    },
+  };
 }
 
 /** Download serialized content (CSV/JSON/TXT/Parquet) as a file. */

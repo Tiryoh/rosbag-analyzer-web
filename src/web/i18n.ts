@@ -15,10 +15,19 @@ const dictionaries: Record<Lang, Record<string, string>> = {
 
     // Loading / Error
     'loading.message': 'Loading bag file...',
+    'loading.withFileName': 'Loading {fileName}…',
     'error.title': 'Error loading bag file',
     'error.reindexFailed': 'No readable chunks found in bag file. See recovery blockers below.',
+    'error.emptyFile': 'Empty file. The selected file contains no data.',
+    'error.failedToReindex': 'Failed to reindex bag file: {reason}',
+    'error.failedToLoad': 'Failed to load bag file.',
+    'error.failedToExport': 'Failed to export file.',
+    'error.unsupportedFormat': 'Unsupported export format: {format}',
     'status.loadedRosout': 'Loaded {messageCount} rosout messages from {nodeCount} nodes',
     'status.loadedRosoutDiagnostics': 'Loaded {messageCount} rosout messages from {nodeCount} nodes, {diagnosticCount} diagnostics state changes',
+    'status.loadedNoMessages': 'Loaded {fileName} successfully, but it contains no rosout or diagnostics topics.',
+    'status.otherTopics': 'Other topics in this file ({count}):',
+    'status.noOtherTopics': 'This file contains no topics.',
 
     // Reindex
     'reindex.noticeBold': 'Auto-reindexed.',
@@ -120,10 +129,19 @@ const dictionaries: Record<Lang, Record<string, string>> = {
 
     // Loading / Error
     'loading.message': '読み込み中...',
+    'loading.withFileName': '{fileName} を読み込み中…',
     'error.title': '読み込みエラー',
     'error.reindexFailed': '読み取り可能なchunkがありません。下記の復旧阻害要因を確認してください。',
+    'error.emptyFile': '空のファイルです。データが含まれていません。',
+    'error.failedToReindex': 'bagファイルの再インデックスに失敗しました: {reason}',
+    'error.failedToLoad': 'bagファイルの読み込みに失敗しました。',
+    'error.failedToExport': 'ファイルのエクスポートに失敗しました。',
+    'error.unsupportedFormat': '未対応のエクスポート形式: {format}',
     'status.loadedRosout': 'rosout {messageCount} 件、{nodeCount} ノードを読み込みました',
     'status.loadedRosoutDiagnostics': 'rosout {messageCount} 件、{nodeCount} ノード、診断状態の変化 {diagnosticCount} 件を読み込みました',
+    'status.loadedNoMessages': '{fileName} は正常に読み込めましたが、rosout / diagnostics トピックは含まれていませんでした。',
+    'status.otherTopics': 'このファイルに含まれていたトピック ({count} 件):',
+    'status.noOtherTopics': 'このファイルにはトピックがありません。',
 
     // Reindex
     'reindex.noticeBold': '自動reindex済み',

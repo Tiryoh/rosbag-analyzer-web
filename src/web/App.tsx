@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from '../core/reindexUtils';
-import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from '../core/types';
-import { SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
+import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from '../core/types';
+import { BagLoadError, SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
 import { SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './severityStyles';
 import {
   loadMessages,
@@ -42,6 +42,17 @@ function formatReindexWarningKey(warning: ReindexWarning): string {
 function formatReindexWarningDetail(t: (key: string) => string, warning: ReindexWarning): string {
   const label = t(formatReindexWarningKey(warning));
   return warning.compression ? `${label} (${warning.compression}): ${warning.detail}` : `${label}: ${warning.detail}`;
+}
+
+/**
+ * Concatenate a translated base message with the underlying error's detail.
+ * Strips a trailing `.` or `。` from the base so the result reads naturally
+ * across both EN and JA (`Failed to load bag file: <reason>` / `bag ファイルの読み込みに失敗しました: <reason>`).
+ */
+function appendErrorDetail(base: string, err: unknown): string {
+  if (!(err instanceof Error)) return base;
+  const trimmed = base.replace(/[.。]$/, '');
+  return `${trimmed}: ${err.message}`;
 }
 
 function App() {
@@ -95,6 +106,8 @@ function App() {
   const [reindexMeta, setReindexMeta] = useState<ReindexMeta | null>(null);
   const [reindexBlockers, setReindexBlockers] = useState<readonly ReindexWarning[] | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [loadCompleted, setLoadCompleted] = useState(false);
+  const [availableTopics, setAvailableTopics] = useState<TopicInfo[]>([]);
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
@@ -117,10 +130,12 @@ function App() {
     setReindexMeta(null);
     setReindexBlockers(null);
     setUploadedFileName(file.name);
+    setLoadCompleted(false);
+    setAvailableTopics([]);
 
     try {
       console.log('Calling loadMessages...');
-      const source = await fileToBagSource(file);
+      const source = fileToBagSource(file);
       const result = await loadMessages(source);
       console.log('loadMessages completed successfully');
       console.log('Messages loaded:', result.messages.length);
@@ -155,15 +170,18 @@ function App() {
       setDiagTimeEnd('');
       setExportIgnoresTimeFilter(false);
       setActiveTab(result.messages.length > 0 ? 'rosout' : 'diagnostics');
+      setAvailableTopics(result.availableTopics);
+      setLoadCompleted(true);
       console.log('State updated successfully');
     } catch (err) {
       console.error('Error in handleFileUpload:', err);
       if (isReindexFailureLike(err)) {
         setReindexBlockers(err.blockers);
         setError(t('error.reindexFailed'));
+      } else if (err instanceof BagLoadError) {
+        setError(tf(err.code, err.params));
       } else {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load bag file';
-        setError(errorMessage);
+        setError(appendErrorDetail(t('error.failedToLoad'), err));
       }
     } finally {
       setLoading(false);
@@ -229,7 +247,7 @@ function App() {
             break;
           default: {
             const exhaustiveFormat: never = format;
-            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+            throw new BagLoadError('error.unsupportedFormat', { format: String(exhaustiveFormat) });
           }
         }
       } else {
@@ -267,15 +285,18 @@ function App() {
             break;
           default: {
             const exhaustiveFormat: never = format;
-            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+            throw new BagLoadError('error.unsupportedFormat', { format: String(exhaustiveFormat) });
           }
         }
       }
 
       downloadFile(content, filename, type);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to export file';
-      setError(errorMessage);
+      if (err instanceof BagLoadError) {
+        setError(tf(err.code, err.params));
+      } else {
+        setError(appendErrorDetail(t('error.failedToExport'), err));
+      }
     }
   };
 
@@ -539,7 +560,9 @@ function App() {
             <div className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full loading-bar" />
             </div>
-            <p className="mt-3 text-center text-sm text-surface-500 dark:text-surface-400">{t('loading.message')}</p>
+            <p className="mt-3 text-center text-sm text-surface-500 dark:text-surface-400">
+              {uploadedFileName ? tf('loading.withFileName', { fileName: uploadedFileName }) : t('loading.message')}
+            </p>
           </div>
         )}
 
@@ -570,7 +593,7 @@ function App() {
         )}
 
         {/* Success */}
-        {hasData && !loading && (
+        {loadCompleted && !loading && hasData && (
           <div className="mb-8 text-center animate-fade-in">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-2 rounded-full">
               {hasDiagnostics
@@ -584,6 +607,32 @@ function App() {
                     nodeCount: uniqueNodes.size,
                   })}
             </p>
+          </div>
+        )}
+
+        {/* Loaded but empty */}
+        {loadCompleted && !loading && !hasData && (
+          <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl animate-fade-in" data-testid="empty-result-panel">
+            <p className="text-sm text-amber-800 dark:text-amber-300 mb-2">
+              {tf('status.loadedNoMessages', { fileName: uploadedFileName })}
+            </p>
+            {availableTopics.length > 0 ? (
+              <details className="text-xs text-amber-800 dark:text-amber-300">
+                <summary className="cursor-pointer select-none font-medium">
+                  {tf('status.otherTopics', { count: availableTopics.length })}
+                </summary>
+                <ul className="mt-2 space-y-0.5 font-mono leading-relaxed" data-testid="available-topics">
+                  {availableTopics.map((info, i) => (
+                    <li key={`${info.topic}-${i}`}>
+                      <span>{info.topic}</span>
+                      <span className="text-amber-700 dark:text-amber-400/80"> [{info.type}]</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : (
+              <p className="text-xs text-amber-800 dark:text-amber-300">{t('status.noOtherTopics')}</p>
+            )}
           </div>
         )}
 

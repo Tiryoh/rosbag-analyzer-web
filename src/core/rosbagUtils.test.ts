@@ -18,10 +18,18 @@ import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } f
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function bytesToBagSource(name: string, bytes: Uint8Array): BagSource {
+  return {
+    name,
+    size: bytes.byteLength,
+    read: async (offset, length) => bytes.slice(offset, offset + length),
+  };
+}
+
 async function loadFixtureSource(name: string): Promise<BagSource> {
   const fixturePath = path.resolve(__dirname, '../../e2e/fixtures', name);
   const buffer = await readFile(fixturePath);
-  return { name, data: new Uint8Array(buffer) };
+  return bytesToBagSource(name, new Uint8Array(buffer));
 }
 
 const rosoutMessages: RosoutMessage[] = [
@@ -646,11 +654,11 @@ describe('exportDiagnosticsToTXT', () => {
 
 describe('loadMessages error handling', () => {
   it('rejects empty (0-byte) bag source', async () => {
-    await expect(loadMessages({ name: 'empty.bag', data: new Uint8Array(0) })).rejects.toThrow('Empty file');
+    await expect(loadMessages(bytesToBagSource('empty.bag', new Uint8Array(0)))).rejects.toThrow('error.emptyFile');
   });
 
   it('rejects empty mcap source', async () => {
-    await expect(loadMessages({ name: 'empty.mcap', data: new Uint8Array(0) })).rejects.toThrow('Empty file');
+    await expect(loadMessages(bytesToBagSource('empty.mcap', new Uint8Array(0)))).rejects.toThrow('error.emptyFile');
   });
 });
 
@@ -670,11 +678,12 @@ describe('loadMessages reindex metadata', () => {
   });
 
   it('returns partial reindex metadata when a readable bag has truncated tail bytes', async () => {
-    const original = await loadFixtureSource('test_unindexed.bag');
-    const corruptedBuffer = new Uint8Array(original.data.length + 3);
-    corruptedBuffer.set(original.data, 0);
-    corruptedBuffer.set([0xde, 0xad, 0xbe], original.data.length);
-    const corruptedSource: BagSource = { name: 'test_unindexed_truncated_tail.bag', data: corruptedBuffer };
+    const fixturePath = path.resolve(__dirname, '../../e2e/fixtures', 'test_unindexed.bag');
+    const originalBytes = new Uint8Array(await readFile(fixturePath));
+    const corruptedBuffer = new Uint8Array(originalBytes.length + 3);
+    corruptedBuffer.set(originalBytes, 0);
+    corruptedBuffer.set([0xde, 0xad, 0xbe], originalBytes.length);
+    const corruptedSource = bytesToBagSource('test_unindexed_truncated_tail.bag', corruptedBuffer);
 
     const result = await loadMessages(corruptedSource);
 
@@ -699,5 +708,50 @@ describe('loadMessages reindex metadata', () => {
       expect(error).toBeInstanceOf(ReindexFailureError);
       expect((error as ReindexFailureError).blockers.some((warning) => warning.code === 'truncated-tail')).toBe(true);
     }
+  });
+});
+
+// ==================== availableTopics ====================
+
+describe('loadMessages availableTopics', () => {
+  it('returns rosout/diagnostics topics from a ROS1 bag', async () => {
+    const source = await loadFixtureSource('test_sample.bag');
+    const result = await loadMessages(source);
+    const topicNames = result.availableTopics.map(t => t.topic);
+    expect(topicNames.some(name => name.includes('rosout'))).toBe(true);
+    expect(topicNames).toContain('/diagnostics_agg');
+    // Result still has matching messages so the success path is unaffected.
+    expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('returns rosout/diagnostics topics from an MCAP bag', async () => {
+    const source = await loadFixtureSource('test_sample.mcap');
+    const result = await loadMessages(source);
+    const topicNames = result.availableTopics.map(t => t.topic);
+    expect(topicNames).toContain('/rosout');
+    expect(topicNames).toContain('/diagnostics_agg');
+    expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('returns 0 messages and lists unrelated topics when MCAP has no rosout/diagnostics', async () => {
+    const source = await loadFixtureSource('test_sample_no_rosout.mcap');
+    const result = await loadMessages(source);
+    expect(result.messages).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.hasDiagnostics).toBe(false);
+    expect(result.availableTopics).toEqual([
+      { topic: '/sensor/lidar/points', type: 'sensor_msgs/msg/PointCloud2' },
+    ]);
+  });
+
+  it('returns 0 messages and lists unrelated topics when ROS1 bag has no rosout/diagnostics', async () => {
+    const source = await loadFixtureSource('test_sample_no_rosout.bag');
+    const result = await loadMessages(source);
+    expect(result.messages).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.hasDiagnostics).toBe(false);
+    expect(result.availableTopics).toEqual([
+      { topic: '/sensor/lidar/scan', type: 'sensor_msgs/LaserScan' },
+    ]);
   });
 });
