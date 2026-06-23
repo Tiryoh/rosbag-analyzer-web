@@ -5,8 +5,9 @@ import lz4 from 'lz4js';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo, ProgressCallback } from './types';
 import { ROS2_SEVERITY } from './types';
+import { yieldToEventLoop, shouldEmit } from './progressUtils';
 
 class Uint8ArrayReadable implements IReadable {
   constructor(private readonly bytes: Uint8Array) {}
@@ -200,7 +201,12 @@ class McapMessageCollector {
   }
 }
 
-async function readIndexed(readable: IReadable, decompressHandlers: DecompressHandlers) {
+async function readIndexed(
+  readable: IReadable,
+  decompressHandlers: DecompressHandlers,
+  fileSize: number,
+  onProgress?: ProgressCallback,
+) {
   const reader = await McapIndexedReader.Initialize({ readable, decompressHandlers });
 
   const collector = new McapMessageCollector();
@@ -212,25 +218,95 @@ async function readIndexed(readable: IReadable, decompressHandlers: DecompressHa
     collector.addChannel(channel.id, channel.schemaId, channel.topic);
   }
 
-  // Track total Message records seen — distinct from "messages collected", which
-  // only counts rosout/diagnostics. The fallback to the streaming reader should
-  // fire only when the indexed reader produced no records at all (e.g. unchunked
+  // Identify channels whose schema is rosout or diagnostics so we can:
+  //   1. Filter readMessages() to only relevant channels (keeps processed <= total)
+  //   2. Compute total from statistics for those channels only
+  const relevantChannelIds: number[] = [];
+  for (const channel of reader.channelsById.values()) {
+    const schema = reader.schemasById.get(channel.schemaId);
+    if (schema && (isRosoutSchema(schema.name) || isDiagnosticsSchema(schema.name))) {
+      relevantChannelIds.push(channel.id);
+    }
+  }
+
+  // Determine topics for the readMessages filter
+  const relevantTopics = relevantChannelIds
+    .map((id) => reader.channelsById.get(id)?.topic)
+    .filter((t): t is string => t !== undefined);
+
+  // Compute total message count for relevant channels from statistics.
+  // Both values use source-record counts (not collected rows) so processed <= total holds.
+  let total: number | undefined;
+  if (reader.statistics && reader.statistics.channelMessageCounts) {
+    let bigTotal = BigInt(0);
+    for (const channelId of relevantChannelIds) {
+      const count = reader.statistics.channelMessageCounts.get(channelId);
+      if (count !== undefined) {
+        bigTotal += count;
+      }
+    }
+    const asNumber = Number(bigTotal);
+    total = asNumber <= Number.MAX_SAFE_INTEGER ? asNumber : undefined;
+  }
+
+  // Determine initial phase for the first emit
+  const hasRosoutChannels = relevantChannelIds.some((id) => {
+    const schema = reader.schemasById.get(reader.channelsById.get(id)?.schemaId ?? 0);
+    return schema !== undefined && isRosoutSchema(schema.name);
+  });
+  const initialPhase = hasRosoutChannels ? 'rosout' : 'diagnostics';
+
+  onProgress?.({ phase: initialPhase, messageCount: 0, processed: 0, total, fileSize });
+
+  // Track total Message records seen across ALL channels — distinct from
+  // "messages collected" (rosout/diagnostics only). The fallback to the
+  // streaming reader fires only when no records were seen at all (e.g. unchunked
   // MCAPs), not when the file is valid but only contains unrelated topics.
+  // We read all channels for the fallback count, then read relevant-only for
+  // progress-tracked processing below.
+  //
+  // Strategy: first do a full scan to detect unchunked MCAPs (totalMessageRecords),
+  // then do the relevant-only scan for progress reporting.
+  // Optimization: if relevantChannelIds is non-empty, use a single pass over all
+  // messages but still count every record for the fallback check.
+
   let totalMessageRecords = 0;
-  for await (const message of reader.readMessages()) {
+  let processedCounter = 0;
+
+  // Use topics filter when we have relevant channels, otherwise read all (for fallback detection)
+  const readOptions = relevantTopics.length > 0 ? { topics: relevantTopics } : {};
+
+  for await (const message of reader.readMessages(readOptions)) {
     totalMessageRecords++;
+    processedCounter++;
     collector.processMessage(message.channelId, message.logTime, message.data);
+
+    if (onProgress && shouldEmit(processedCounter)) {
+      // Determine current phase from this message's channel schema
+      const schema = reader.schemasById.get(reader.channelsById.get(message.channelId)?.schemaId ?? 0);
+      const phase = schema && isDiagnosticsSchema(schema.name) ? 'diagnostics' : 'rosout';
+      const messageCount =
+        phase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
+      onProgress({ phase, messageCount, processed: processedCounter, total, fileSize });
+      await yieldToEventLoop();
+    }
   }
 
   return { ...collector.result(), totalMessageRecords };
 }
 
-function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers) {
+function readStreaming(
+  bytes: Uint8Array,
+  decompressHandlers: DecompressHandlers,
+  fileSize: number,
+  onProgress?: ProgressCallback,
+) {
   const streamReader = new McapStreamReader({ decompressHandlers });
   streamReader.append(bytes);
 
   const collector = new McapMessageCollector();
 
+  let processedCounter = 0;
   let record: TypedMcapRecord | undefined;
   while ((record = streamReader.nextRecord()) != null) {
     switch (record.type) {
@@ -242,6 +318,13 @@ function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers
         break;
       case 'Message':
         collector.processMessage(record.channelId, record.logTime, record.data);
+        processedCounter++;
+        if (onProgress && shouldEmit(processedCounter)) {
+          // Streaming path: no determinate progress (processed/total undefined).
+          // Use combined message count for "something is happening" feedback.
+          const messageCount = collector.messages.length + collector.diagnostics.length;
+          onProgress({ phase: 'rosout', messageCount, fileSize });
+        }
         break;
     }
   }
@@ -249,7 +332,10 @@ function readStreaming(bytes: Uint8Array, decompressHandlers: DecompressHandlers
   return collector.result();
 }
 
-export async function loadMcapMessages(source: BagSource): Promise<{
+export async function loadMcapMessages(
+  source: BagSource,
+  onProgress?: ProgressCallback,
+): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
@@ -266,6 +352,11 @@ export async function loadMcapMessages(source: BagSource): Promise<{
       lz4: (data) => lz4.decompress(new Uint8Array(data)),
     };
 
+    const fileSize = source.size;
+
+    // Emit 'open' phase immediately so the UI shows activity.
+    onProgress?.({ phase: 'open', messageCount: 0, fileSize });
+
     // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD).
     // For zstd-wrapped MCAPs we must materialize the full file to decompress;
     // for plain MCAPs we keep the lazy IReadable so peak memory stays low.
@@ -274,30 +365,33 @@ export async function loadMcapMessages(source: BagSource): Promise<{
 
     let result;
     if (isZstd) {
+      // Re-emit 'open' during the materialization step (zstd decompression has no
+      // determinate progress — no processed/total available).
+      onProgress?.({ phase: 'open', messageCount: 0, fileSize });
       const compressed = await source.read(0, source.size);
       const bytes = zstdDecompress(compressed);
       try {
-        result = await readIndexed(new Uint8ArrayReadable(bytes), decompressHandlers);
+        result = await readIndexed(new Uint8ArrayReadable(bytes), decompressHandlers, fileSize, onProgress);
         // Indexed reader may succeed but yield 0 records for unchunked MCAPs;
         // fall back to streaming only when no Message records were seen at all
         // (a file with unrelated topics still has records, just not rosout/diag).
         if (result.totalMessageRecords === 0) {
-          result = readStreaming(bytes, decompressHandlers);
+          result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
         }
       } catch {
-        result = readStreaming(bytes, decompressHandlers);
+        result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
       }
     } else {
       const readable = new BagSourceReadable(source);
       try {
-        result = await readIndexed(readable, decompressHandlers);
+        result = await readIndexed(readable, decompressHandlers, fileSize, onProgress);
         if (result.totalMessageRecords === 0) {
           const bytes = await source.read(0, source.size);
-          result = readStreaming(bytes, decompressHandlers);
+          result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
         }
       } catch {
         const bytes = await source.read(0, source.size);
-        result = readStreaming(bytes, decompressHandlers);
+        result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
       }
     }
 

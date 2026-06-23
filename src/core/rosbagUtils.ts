@@ -3,8 +3,9 @@ import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { ReindexMeta } from './reindexUtils';
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo, ProgressCallback } from './types';
 import { BagLoadError, DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
+import { yieldToEventLoop, shouldEmit } from './progressUtils';
 
 /** In-memory Filelike for the reindex re-open path (after building a Uint8Array). */
 class Uint8ArrayReader {
@@ -75,7 +76,7 @@ type ReadMessageResult<T> = {
   timestamp: BagTimestamp;
 };
 
-export async function loadRosbagMessages(source: BagSource): Promise<{
+export async function loadRosbagMessages(source: BagSource, onProgress?: ProgressCallback): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
@@ -90,6 +91,9 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
   console.log('=== Starting ROSbag load ===');
   console.log('File name:', source.name);
   console.log('File size:', source.size, 'bytes');
+
+  // Emit open phase immediately so the UI shows activity right away.
+  onProgress?.({ phase: 'open', messageCount: 0, fileSize: source.size });
 
   try {
     // Peek the magic bytes via lazy read (no full-file load).
@@ -128,6 +132,10 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
     let reindexMeta: ReindexMeta | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
       console.log('Bag file is unindexed. Materializing bytes for reindex...');
+      // Emit reindex phase BEFORE the heavy materialize+reindex work so the UI
+      // can show the phase label while the synchronous scan runs.
+      onProgress?.({ phase: 'reindex', messageCount: 0, fileSize: source.size });
+      await yieldToEventLoop();
       // Reindex needs a full-buffer scan, so materialize the file here only
       // (the indexed fast-path above never pays this cost).
       const fullBytes = await source.read(0, source.size);
@@ -190,6 +198,8 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
     };
 
     // Read rosout messages
+    // ROS1 cannot produce processed/total counts, so we emit messageCount only.
+    onProgress?.({ phase: 'rosout', messageCount: 0, fileSize: source.size });
     if (rosoutTopics.length > 0) {
       console.log('Reading rosout messages from topics:', rosoutTopics);
       let messageCount = 0;
@@ -220,15 +230,26 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
             if (msg.name) {
               uniqueNodes.add(msg.name);
             }
+
+            // Throttled progress: emit every 100 collected rows. Cannot await
+            // inside readMessages callback (sync), so yield only at phase boundaries.
+            if (shouldEmit(messages.length)) {
+              onProgress?.({ phase: 'rosout', messageCount: messages.length, fileSize: source.size });
+            }
           }
         }
       );
       console.log(`✓ Successfully loaded ${messages.length} rosout messages from ${uniqueNodes.size} nodes`);
     }
+    // Yield to event loop at the rosout→diagnostics phase boundary so React can
+    // flush the final rosout progress update before diagnostics work begins.
+    await yieldToEventLoop();
 
     // Read diagnostics messages (state-change only)
+    // messageCount semantics during diagnostics phase = diagnostics.length (state-change entries).
     const diagnostics: DiagnosticStatusEntry[] = [];
     const hasDiagnostics = diagnosticsTopics.length > 0;
+    onProgress?.({ phase: 'diagnostics', messageCount: diagnostics.length, fileSize: source.size });
 
     if (hasDiagnostics) {
       console.log('Reading diagnostics messages from topics:', diagnosticsTopics);
@@ -255,6 +276,12 @@ export async function loadRosbagMessages(source: BagSource): Promise<{
             if (!prev || prev.level !== level || prev.message !== message) {
               lastState.set(name, { level, message });
               diagnostics.push({ timestamp, name, level, message, values });
+
+              // Throttled progress: emit every 100 state-change entries. Cannot
+              // await inside readMessages callback (sync).
+              if (shouldEmit(diagnostics.length)) {
+                onProgress?.({ phase: 'diagnostics', messageCount: diagnostics.length, fileSize: source.size });
+              }
             }
           }
         }
@@ -527,7 +554,7 @@ export function exportDiagnosticsToParquet(
   return new Uint8Array(buf);
 }
 
-export async function loadMessages(source: BagSource): Promise<{
+export async function loadMessages(source: BagSource, onProgress?: ProgressCallback): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
   diagnostics: DiagnosticStatusEntry[];
@@ -542,7 +569,7 @@ export async function loadMessages(source: BagSource): Promise<{
   const name = source.name.toLowerCase();
   if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
     const { loadMcapMessages } = await import('./mcapUtils');
-    return await loadMcapMessages(source);
+    return await loadMcapMessages(source, onProgress);
   }
-  return await loadRosbagMessages(source);
+  return await loadRosbagMessages(source, onProgress);
 }

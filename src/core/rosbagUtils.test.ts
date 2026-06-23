@@ -12,7 +12,7 @@ import {
   escapeCSV,
   loadMessages,
 } from './rosbagUtils';
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, ProgressInfo } from './types';
 
 // -- Test fixtures --
 
@@ -753,5 +753,55 @@ describe('loadMessages availableTopics', () => {
     expect(result.availableTopics).toEqual([
       { topic: '/sensor/lidar/scan', type: 'sensor_msgs/LaserScan' },
     ]);
+  });
+});
+
+// ==================== onProgress ====================
+
+describe('loadMessages onProgress', () => {
+  it('emits open → rosout phases with monotonically nondecreasing messageCount for a ROS1 bag', async () => {
+    const source = await loadFixtureSource('test_sample.bag');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].phase).toBe('open');
+    expect(events[0].fileSize).toBe(source.size);
+    const phases = new Set(events.map(e => e.phase));
+    expect(phases.has('rosout')).toBe(true);
+
+    const rosoutCounts = events.filter(e => e.phase === 'rosout').map(e => e.messageCount);
+    for (let i = 1; i < rosoutCounts.length; i++) {
+      expect(rosoutCounts[i]).toBeGreaterThanOrEqual(rosoutCounts[i - 1]);
+    }
+    // ROS1 path does not produce determinate progress.
+    expect(events.every(e => e.processed === undefined && e.total === undefined)).toBe(true);
+  });
+
+  it('emits a reindex phase when loading an unindexed ROS1 bag', async () => {
+    const source = await loadFixtureSource('test_unindexed.bag');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+    expect(events.some(e => e.phase === 'reindex')).toBe(true);
+  });
+
+  it('emits processed/total for an indexed MCAP and respects processed <= total', async () => {
+    const source = await loadFixtureSource('test_sample.mcap');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+
+    const determinate = events.filter(e => e.processed !== undefined && e.total !== undefined);
+    expect(determinate.length).toBeGreaterThan(0);
+    for (const e of determinate) {
+      expect(e.processed!).toBeLessThanOrEqual(e.total!);
+    }
+  });
+
+  it('emits progress without processed/total for an MCAP that has no rosout/diagnostics (streaming fallback)', async () => {
+    const source = await loadFixtureSource('test_sample_no_rosout.mcap');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].phase).toBe('open');
   });
 });
