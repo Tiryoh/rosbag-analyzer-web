@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:singlefile": "tsc && vite build --config vite.singlefile.config.ts",
+    "bench:llm": "vite --config vite.bench.config.ts --host 127.0.0.1 --port 3001 --open /bench/local-llm/",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
@@ -30,6 +31,7 @@
     "setimmediate": "^1.0.5"
   },
   "devDependencies": {
+    "@mlc-ai/web-llm": "^0.2.84",
     "@playwright/test": "^1.58.2",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
