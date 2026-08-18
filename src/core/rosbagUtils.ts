@@ -239,6 +239,10 @@ export async function loadRosbagMessages(source: BagSource, onProgress?: Progres
           }
         }
       );
+      // Final emit: the throttle above only fires on exact multiples of 100, so
+      // without this the UI would under-report by up to 99 rows (and stay at 0
+      // for bags with fewer than 100 rosout messages).
+      onProgress?.({ phase: 'rosout', messageCount: messages.length, fileSize: source.size });
       console.log(`✓ Successfully loaded ${messages.length} rosout messages from ${uniqueNodes.size} nodes`);
     }
     // Yield to event loop at the rosout→diagnostics phase boundary so React can
@@ -286,6 +290,8 @@ export async function loadRosbagMessages(source: BagSource, onProgress?: Progres
           }
         }
       );
+      // Final emit, for the same reason as the rosout phase above.
+      onProgress?.({ phase: 'diagnostics', messageCount: diagnostics.length, fileSize: source.size });
       console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics state changes`);
     }
 

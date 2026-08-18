@@ -797,6 +797,30 @@ describe('loadMessages onProgress', () => {
     }
   });
 
+  it('emits a final rosout count for a ROS1 bag with fewer than 100 messages', async () => {
+    const source = await loadFixtureSource('test_sample.bag');
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(source, (info) => events.push(info));
+
+    // The 100-record throttle never fires for these fixtures, so the final
+    // count can only come from the post-loop emit.
+    expect(result.messages.length).toBeGreaterThan(0);
+    expect(result.messages.length).toBeLessThan(100);
+    const rosoutEvents = events.filter(e => e.phase === 'rosout');
+    expect(rosoutEvents[rosoutEvents.length - 1].messageCount).toBe(result.messages.length);
+  });
+
+  it('emits a final count for an indexed MCAP with fewer than 100 messages', async () => {
+    const source = await loadFixtureSource('test_sample.mcap');
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(source, (info) => events.push(info));
+
+    expect(result.messages.length).toBeGreaterThan(0);
+    expect(result.messages.length).toBeLessThan(100);
+    const rosoutEvents = events.filter(e => e.phase === 'rosout');
+    expect(rosoutEvents[rosoutEvents.length - 1].messageCount).toBe(result.messages.length);
+  });
+
   it('emits progress without processed/total for an MCAP that has no rosout/diagnostics (streaming fallback)', async () => {
     const source = await loadFixtureSource('test_sample_no_rosout.mcap');
     const events: ProgressInfo[] = [];

@@ -258,41 +258,56 @@ async function readIndexed(
 
   onProgress?.({ phase: initialPhase, messageCount: 0, processed: 0, total, fileSize });
 
-  // Track total Message records seen across ALL channels — distinct from
-  // "messages collected" (rosout/diagnostics only). The fallback to the
-  // streaming reader fires only when no records were seen at all (e.g. unchunked
-  // MCAPs), not when the file is valid but only contains unrelated topics.
-  // We read all channels for the fallback count, then read relevant-only for
-  // progress-tracked processing below.
-  //
-  // Strategy: first do a full scan to detect unchunked MCAPs (totalMessageRecords),
-  // then do the relevant-only scan for progress reporting.
-  // Optimization: if relevantChannelIds is non-empty, use a single pass over all
-  // messages but still count every record for the fallback check.
+  // Restrict the read to rosout/diagnostics topics when we have them: it keeps
+  // `processed` on the same population as `total`, and lets the reader skip
+  // chunks that hold nothing we collect.
+  const didFilter = relevantTopics.length > 0;
+  const readOptions = didFilter ? { topics: relevantTopics } : {};
 
-  let totalMessageRecords = 0;
   let processedCounter = 0;
-
-  // Use topics filter when we have relevant channels, otherwise read all (for fallback detection)
-  const readOptions = relevantTopics.length > 0 ? { topics: relevantTopics } : {};
+  let lastPhase: 'rosout' | 'diagnostics' = initialPhase;
 
   for await (const message of reader.readMessages(readOptions)) {
-    totalMessageRecords++;
     processedCounter++;
     collector.processMessage(message.channelId, message.logTime, message.data);
 
+    // Determine current phase from this message's channel schema
+    const schema = reader.schemasById.get(reader.channelsById.get(message.channelId)?.schemaId ?? 0);
+    lastPhase = schema && isDiagnosticsSchema(schema.name) ? 'diagnostics' : 'rosout';
+
     if (onProgress && shouldEmit(processedCounter)) {
-      // Determine current phase from this message's channel schema
-      const schema = reader.schemasById.get(reader.channelsById.get(message.channelId)?.schemaId ?? 0);
-      const phase = schema && isDiagnosticsSchema(schema.name) ? 'diagnostics' : 'rosout';
       const messageCount =
-        phase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
-      onProgress({ phase, messageCount, processed: processedCounter, total, fileSize });
+        lastPhase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
+      onProgress({ phase: lastPhase, messageCount, processed: processedCounter, total, fileSize });
       await yieldToEventLoop();
     }
   }
 
-  return { ...collector.result(), totalMessageRecords };
+  // Final emit: the throttle above only fires on exact multiples of 100, so
+  // without this the UI would under-report by up to 99 records.
+  if (onProgress && processedCounter > 0) {
+    const messageCount =
+      lastPhase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
+    onProgress({ phase: lastPhase, messageCount, processed: processedCounter, total, fileSize });
+  }
+
+  // The streaming fallback exists for MCAPs the indexed reader cannot read at
+  // all (e.g. unchunked). Because the read above is filtered to rosout/
+  // diagnostics topics, "no records" is *also* the correct answer for a valid
+  // file whose relevant channels happen to be empty — reporting 0 there would
+  // trigger a needless full materialization and re-parse. So when the filtered
+  // read comes up empty, probe the unfiltered stream for a single record to
+  // tell the two cases apart. The probe decompresses at most one chunk and only
+  // runs on the empty path.
+  let sawAnyMessageRecord = processedCounter > 0;
+  if (!sawAnyMessageRecord && didFilter) {
+    for await (const probe of reader.readMessages()) {
+      sawAnyMessageRecord = probe != null;
+      break;
+    }
+  }
+
+  return { ...collector.result(), sawAnyMessageRecord };
 }
 
 function readStreaming(
@@ -327,6 +342,13 @@ function readStreaming(
         }
         break;
     }
+  }
+
+  // Final emit: the throttle above only fires on exact multiples of 100, so
+  // without this the UI would stay at 0 for files with under 100 records.
+  if (onProgress && processedCounter > 0) {
+    const messageCount = collector.messages.length + collector.diagnostics.length;
+    onProgress({ phase: 'rosout', messageCount, fileSize });
   }
 
   return collector.result();
@@ -375,7 +397,7 @@ export async function loadMcapMessages(
         // Indexed reader may succeed but yield 0 records for unchunked MCAPs;
         // fall back to streaming only when no Message records were seen at all
         // (a file with unrelated topics still has records, just not rosout/diag).
-        if (result.totalMessageRecords === 0) {
+        if (!result.sawAnyMessageRecord) {
           result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
         }
       } catch {
@@ -385,7 +407,7 @@ export async function loadMcapMessages(
       const readable = new BagSourceReadable(source);
       try {
         result = await readIndexed(readable, decompressHandlers, fileSize, onProgress);
-        if (result.totalMessageRecords === 0) {
+        if (!result.sawAnyMessageRecord) {
           const bytes = await source.read(0, source.size);
           result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
         }

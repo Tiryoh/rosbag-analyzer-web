@@ -60,6 +60,7 @@ export type ProgressCallback = (info: ProgressInfo) => void;
 ### 3. `processed` / `total` を出せる経路・出せない経路
 
 - **出せる（確定割合）**: MCAP の indexed reader。`statistics.channelMessageCounts` のうち rosout / diagnostics スキーマを持つチャンネルだけを合算して `total` を作り、`readMessages` をそのチャンネルに絞って読むことで `processed <= total` を保証する。`total` が `Number.MAX_SAFE_INTEGER` を超える場合は `undefined` にフォールバックする
+  - この topic 絞り込みは streaming fallback の判定条件と干渉する点に注意する。fallback は「indexed reader が Message レコードを 1 件も読めない（unchunked MCAP 等）」場合に限り発火させたいが、絞り込み後の読み出しが 0 件になるのは「rosout/diagnostics チャンネルが空の正常なファイル」でも起きる。これを取り違えると ADR 0009 で回避したはずの全量 materialize + 再パースが不要に走る。したがって **絞り込み読み出しが 0 件だったときのみ、未絞り込みで 1 件だけ probe** して両者を判別する（probe のコストは最大 1 chunk の展開で、空の場合にしか発生しない）
 - **出せない（件数のみ）**:
   - ROS1 bag 全般（事前総数カウントが無い）
   - MCAP の streaming fallback（unchunked MCAP。総数が事前に分からない）
@@ -68,6 +69,7 @@ export type ProgressCallback = (info: ProgressInfo) => void;
 ### 4. throttling とイベントループへの yield
 
 - 進捗 emit はメッセージ 100 件ごとに間引く（`shouldEmit(counter, 100)`）。毎メッセージ emit は React の再描画を過剰に誘発する
+- 間引きは 100 の倍数でしか発火しないため、**各読み出しループの終了直後に必ず最終 emit を行う**。これがないと 100 件未満のファイルで件数が 0 のまま止まり、100 件以上でも最大 99 件を取りこぼす
 - `readMessages` の同期コールバック内からは `await` できないため、yield はフェーズ境界（rosout→diagnostics、reindex 前）と MCAP indexed の emit 直後に `yieldToEventLoop()` で行い、React が進捗 state を flush できるようにする
 - `yieldToEventLoop` は `setTimeout(_, 0)` で実装する。`requestAnimationFrame` は **使わない** — `src/core/` はブラウザ外でも動く必要があり（ADR 0008）、DOM API に依存させないため
 
@@ -118,4 +120,6 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 2. 確定割合を出せない経路（ROS1 / streaming fallback / zstd 解凍）は `processed` / `total` を `undefined` のままにする。UI はその場合に不定形アニメーションへフォールバックする
 3. `src/core/**` は進捗報告のために DOM API（`requestAnimationFrame` 等）を参照しない。yield は `setTimeout(_, 0)` で行う
 4. `onProgress` は optional で、未指定でもロード結果は変わらない
-5. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP（streaming fallback）でも emit されることを確認する
+5. 各読み出しループの直後に最終 emit があること。100 件未満のファイルでも最終件数が UI に届く
+6. streaming fallback は「indexed reader が 1 件も読めない」場合のみ発火する。topic 絞り込みの結果 0 件になったケースを fallback 条件に直結させない
+7. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP（streaming fallback）でも emit されること、100 件未満のファイルで最終件数が emit されることを確認する
