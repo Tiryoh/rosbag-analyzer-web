@@ -46,6 +46,28 @@ This document defines the test specification for the filter functions in `src/co
 | 3 | 300 | `/motor/left` | 2 (ERROR) | `Error: overheating` |
 | 4 | 400 | `/motor/right` | 3 (STALE) | `Stale: no update` |
 
+### Large Fixture (generated, not committed)
+
+The committed fixtures hold 10 rosout messages, which is below the 100-record
+throttle in the progress emitters — phases never advance and the determinate
+progress bar never moves. `e2e/fixtures/generate_large_mcap.ts` builds a file
+big enough to exercise those paths:
+
+```
+npx tsx e2e/fixtures/generate_large_mcap.ts                          # 500k messages
+npx tsx e2e/fixtures/generate_large_mcap.ts --messages 1000000       # bigger
+npx tsx e2e/fixtures/generate_large_mcap.ts --keep-plain             # keep the uncompressed .mcap too
+```
+
+Output is `e2e/fixtures/test_large.mcap.zstd` (git-ignored — regenerate it when
+you need it). The defaults produce ~20 MiB on disk / ~94 MiB materialized:
+500,000 rosout messages across 20 nodes and ~2,400 diagnostics state changes,
+with schemas copied from `test_sample.mcap` so the reader path is identical.
+Message content is generated from a fixed seed, so the file is reproducible.
+
+Compression needs either Node >= 22.15 (`zlib.createZstdCompress`) or the
+`zstd` CLI on PATH.
+
 ---
 
 ## filterMessages Spec

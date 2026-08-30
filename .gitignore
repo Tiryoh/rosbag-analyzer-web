@@ -28,3 +28,7 @@ dist-ssr
 playwright-report/
 playwright-report-singlefile/
 test-results/
+
+# Large generated fixtures (npx tsx e2e/fixtures/generate_large_mcap.ts)
+e2e/fixtures/test_large.mcap
+e2e/fixtures/test_large.mcap.zstd
