@@ -7,7 +7,7 @@ import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
 import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo, ProgressCallback } from './types';
 import { ROS2_SEVERITY } from './types';
-import { yieldToEventLoop, shouldEmit } from './progressUtils';
+import { yieldToEventLoop, createProgressThrottle } from './progressUtils';
 
 class Uint8ArrayReadable implements IReadable {
   constructor(private readonly bytes: Uint8Array) {}
@@ -297,6 +297,7 @@ async function readIndexed(
   // filter also admits channels that merely share a topic with a relevant one.
   let recordCounter = 0;
   let processedCounter = 0;
+  const shouldEmit = createProgressThrottle();
 
   for await (const message of reader.readMessages(readOptions)) {
     recordCounter++;
@@ -309,14 +310,15 @@ async function readIndexed(
       phase = schema && isDiagnosticsSchema(schema.name) ? 'diagnostics' : 'rosout';
     }
 
-    if (onProgress && shouldEmit(recordCounter)) {
+    if (onProgress && shouldEmit()) {
       emit(processedCounter);
       await yieldToEventLoop();
     }
   }
 
-  // Final emit: the throttle above only fires on exact multiples of 100, so
-  // without this the UI would under-report by up to 99 records.
+  // Final emit: the throttle above skips any update that lands inside its
+  // interval, so without this the UI would keep whatever count the last
+  // throttled emit happened to catch.
   if (recordCounter > 0) {
     emit(processedCounter);
   }
@@ -363,6 +365,7 @@ function readStreaming(
   };
 
   let processedCounter = 0;
+  const shouldEmit = createProgressThrottle();
   let record: TypedMcapRecord | undefined;
   while ((record = streamReader.nextRecord()) != null) {
     switch (record.type) {
@@ -377,7 +380,7 @@ function readStreaming(
         processedCounter++;
         const kind = collector.channelKind(record.channelId);
         if (kind) phase = kind;
-        if (shouldEmit(processedCounter)) {
+        if (shouldEmit()) {
           emit();
         }
         break;
@@ -385,8 +388,8 @@ function readStreaming(
     }
   }
 
-  // Final emit: the throttle above only fires on exact multiples of 100, so
-  // without this the UI would stay at 0 for files with under 100 records.
+  // Final emit: the throttle above skips any update that lands inside its
+  // interval, so without this a load shorter than one interval would stay at 0.
   if (processedCounter > 0) {
     emit();
   }

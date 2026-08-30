@@ -5,7 +5,7 @@ import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { ReindexMeta } from './reindexUtils';
 import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo, ProgressCallback } from './types';
 import { BagLoadError, DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
-import { yieldToEventLoop, shouldEmit } from './progressUtils';
+import { yieldToEventLoop, createProgressThrottle } from './progressUtils';
 
 /** In-memory Filelike for the reindex re-open path (after building a Uint8Array). */
 class Uint8ArrayReader {
@@ -203,6 +203,7 @@ export async function loadRosbagMessages(source: BagSource, onProgress?: Progres
     if (rosoutTopics.length > 0) {
       console.log('Reading rosout messages from topics:', rosoutTopics);
       let messageCount = 0;
+      const shouldEmit = createProgressThrottle();
 
       await activeBag.readMessages(
         { topics: rosoutTopics, decompress: decompressOptions },
@@ -231,17 +232,17 @@ export async function loadRosbagMessages(source: BagSource, onProgress?: Progres
               uniqueNodes.add(msg.name);
             }
 
-            // Throttled progress: emit every 100 collected rows. Cannot await
-            // inside readMessages callback (sync), so yield only at phase boundaries.
-            if (shouldEmit(messages.length)) {
+            // Throttled progress. Cannot await inside the readMessages callback
+            // (sync), so yield only at phase boundaries.
+            if (shouldEmit()) {
               onProgress?.({ phase: 'rosout', messageCount: messages.length, fileSize: source.size });
             }
           }
         }
       );
-      // Final emit: the throttle above only fires on exact multiples of 100, so
-      // without this the UI would under-report by up to 99 rows (and stay at 0
-      // for bags with fewer than 100 rosout messages).
+      // Final emit: the throttle above skips any update that lands inside its
+      // interval, so without this the UI would keep whatever count the last
+      // throttled emit caught (and stay at 0 for bags that load in one tick).
       onProgress?.({ phase: 'rosout', messageCount: messages.length, fileSize: source.size });
       console.log(`✓ Successfully loaded ${messages.length} rosout messages from ${uniqueNodes.size} nodes`);
     }
@@ -258,6 +259,7 @@ export async function loadRosbagMessages(source: BagSource, onProgress?: Progres
     if (hasDiagnostics) {
       console.log('Reading diagnostics messages from topics:', diagnosticsTopics);
       const lastState = new Map<string, { level: number; message: string }>();
+      const shouldEmit = createProgressThrottle();
 
       await activeBag.readMessages(
         { topics: diagnosticsTopics, decompress: decompressOptions },
@@ -281,9 +283,9 @@ export async function loadRosbagMessages(source: BagSource, onProgress?: Progres
               lastState.set(name, { level, message });
               diagnostics.push({ timestamp, name, level, message, values });
 
-              // Throttled progress: emit every 100 state-change entries. Cannot
-              // await inside readMessages callback (sync).
-              if (shouldEmit(diagnostics.length)) {
+              // Throttled progress. Cannot await inside the readMessages
+              // callback (sync).
+              if (shouldEmit()) {
                 onProgress?.({ phase: 'diagnostics', messageCount: diagnostics.length, fileSize: source.size });
               }
             }

@@ -70,14 +70,16 @@ export type ProgressCallback = (info: ProgressInfo) => void;
 
 ### 4. throttling とイベントループへの yield
 
-- 進捗 emit はメッセージ 100 件ごとに間引く（`shouldEmit(counter, 100)`）。毎メッセージ emit は React の再描画を過剰に誘発する
-- 間引きは 100 の倍数でしか発火しないため、**各読み出しループの終了直後に必ず最終 emit を行う**。これがないと 100 件未満のファイルで件数が 0 のまま止まり、100 件以上でも最大 99 件を取りこぼす
+- 進捗 emit は **経過時間** で間引く（`createProgressThrottle(intervalMs)`、既定 50ms = 秒 20 回）。毎メッセージ emit は React の再描画を過剰に誘発する
+  - **件数ベース（「N レコードごと」）は採らない。** yield 1 回は `setTimeout` のクランプで実測 約 2ms かかるので、件数ベースだと yield 回数がファイルサイズに線形に増える。50 万件の MCAP では、約 14 秒のロードのうち 11 秒が timer 待ちだった。時間ベースなら yield 回数は「経過時間 ÷ interval」で頭打ちになり、ファイルサイズに依存しない（同一ファイルで進捗レポートのオーバーヘッド +10.9 秒 → +0.55 秒、emit 5,054 回 → 42 回）
+  - 代償として `Date.now()` を毎レコード呼ぶ。50 万件で約 40ms（ロード全体の 1.5%）なので許容する。カウンタで先に間引く 2 段構えは、この数字が問題になるまで持ち込まない
+- throttle は interval 内に来た更新を落とすため、**各読み出しループの終了直後に必ず最終 emit を行う**。これがないと最後に throttle を通過した時点の件数で止まり、1 interval 未満で終わるファイルでは 0 のままになる
 - `readMessages` の同期コールバック内からは `await` できないため、yield はフェーズ境界（rosout→diagnostics、reindex 前）と MCAP indexed の emit 直後に `yieldToEventLoop()` で行い、React が進捗 state を flush できるようにする
 - `yieldToEventLoop` は `setTimeout(_, 0)` で実装する。`requestAnimationFrame` は **使わない** — `src/core/` はブラウザ外でも動く必要があり（ADR 0008）、DOM API に依存させないため
 
 ### 5. core / web 境界
 
-- `progressUtils.ts`（`yieldToEventLoop` / `shouldEmit`）は `src/core/` に置く。DOM 非依存なので core の制約に反しない
+- `progressUtils.ts`（`yieldToEventLoop` / `createProgressThrottle`）は `src/core/` に置く。DOM 非依存なので core の制約に反しない
 - UI 文言（フェーズ名・"N messages parsed"）は `src/web/i18n.ts` の `progress.*` キーで管理し、ADR 0006 の方針に沿って web 境界で翻訳する。core 側は翻訳済み文字列を持たない
 
 ## Alternatives Considered
@@ -109,7 +111,8 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 ### Negative
 
 - `messageCount` の意味がフェーズによって変わる（rosout 件数 / diagnostics 状態変化件数）ため、消費側はフェーズを見て解釈する必要がある
-- loader 内に進捗 emit と yield 呼び出しが点在し、パースのホットパスにわずかなオーバーヘッドが乗る（100 件間引きで実質無視できる範囲）
+- loader 内に進捗 emit と yield 呼び出しが点在し、パースのホットパスにオーバーヘッドが乗る。50 万件の MCAP で実測 +0.55 秒（ロード時間の約 23%）。内訳は 42 回の yield と毎レコードの `Date.now()`。interval を上げれば減らせるが、バーの滑らかさとのトレードオフになる
+- throttle が状態を持つようになったため、読み出しループごとに `createProgressThrottle()` を作る必要がある。使い回すとループ間で interval が引き継がれ、後続ループの最初の emit が落ちる
 
 ### Operational Impact
 
@@ -123,7 +126,8 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 3. indexed で確定イベントを emit したあと streaming fallback に落ちる場合は、`readStreaming` に入る前に `processed` / `total` を持たないイベントを 1 回 emit して yield する。`readStreaming` は同期実行で途中 yield できないため、これが無いと直前の確定イベント（多くは 0%）のまま画面が固まる
 4. `src/core/**` は進捗報告のために DOM API（`requestAnimationFrame` 等）を参照しない。yield は `setTimeout(_, 0)` で行う
 5. `onProgress` は optional で、未指定でもロード結果は変わらない
-6. 各読み出しループの直後に最終 emit があること。100 件未満のファイルでも最終件数が UI に届く
-7. streaming fallback は「indexed reader が 1 件も読めない」場合のみ発火する。topic 絞り込みの結果 0 件になったケースを fallback 条件に直結させない
-8. `phase` と `messageCount` は常に対になる。streaming fallback でも読んでいるチャンネルの種別から `phase` を決め、その種別の収集件数（`messages.length` / `diagnostics.length`）を報告する。両者を混ぜた合計件数は出さない
-9. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP でも emit されること、100 件未満のファイルで最終件数が emit されることを確認する。加えて、`processed` を伴うイベントが必ず `total` を持つこと、statistics を持たない indexed MCAP が不定形のままであること、unchunked MCAP で fallback 前に確定状態が解除されること、diagnostics のみの unchunked MCAP が `phase: 'diagnostics'` を報告することを回帰テストで固定する
+6. 各読み出しループの直後に最終 emit があること。1 interval 未満で終わるファイルでも最終件数が UI に届く
+7. 進捗 emit の回数はレコード数ではなく経過時間で決まること。同じ内容でレコード数だけが N 倍のファイルを読んでも emit 回数は N 倍にならない
+8. streaming fallback は「indexed reader が 1 件も読めない」場合のみ発火する。topic 絞り込みの結果 0 件になったケースを fallback 条件に直結させない
+9. `phase` と `messageCount` は常に対になる。streaming fallback でも読んでいるチャンネルの種別から `phase` を決め、その種別の収集件数（`messages.length` / `diagnostics.length`）を報告する。両者を混ぜた合計件数は出さない
+10. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP でも emit されること、1 interval 未満で終わるファイルで最終件数が emit されることを確認する。加えて、`processed` を伴うイベントが必ず `total` を持つこと、statistics を持たない indexed MCAP が不定形のままであること、unchunked MCAP で fallback 前に確定状態が解除されること、diagnostics のみの unchunked MCAP が `phase: 'diagnostics'` を報告すること、`createProgressThrottle` が呼び出し回数ではなく経過時間で発火することを回帰テストで固定する
