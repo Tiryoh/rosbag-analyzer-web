@@ -66,7 +66,13 @@ const MESSAGE_COUNT = intArg('--messages', 500_000);
 const DIAGNOSTICS_EVERY = intArg('--every', 100);
 const OUTPUT = path.resolve(stringArg('--out', path.join(__dirname, 'test_large.mcap.zstd')));
 const KEEP_PLAIN = process.argv.includes('--keep-plain');
-const PLAIN_OUTPUT = OUTPUT.replace(/\.zstd$/, '') || `${OUTPUT}.mcap`;
+// The uncompressed MCAP is written first and then compressed into OUTPUT, so
+// these two paths must never collide: compressing a file onto itself truncates
+// it through the stream path, is refused by the CLI, and the cleanup below
+// would go on to delete the only output.
+const PLAIN_OUTPUT = OUTPUT.endsWith('.zstd')
+  ? OUTPUT.slice(0, -'.zstd'.length)
+  : `${OUTPUT}.plain.mcap`;
 
 // -- Deterministic pseudo-random data ----------------------------------------
 
@@ -298,10 +304,15 @@ async function compress(): Promise<void> {
   }
 
   const result = spawnSync('zstd', ['-f', '-T0', '-o', OUTPUT, PLAIN_OUTPUT], { stdio: 'inherit' });
-  if (result.error || result.status !== 0) {
+  if (result.error) {
     throw new Error(
       'zstd compression needs either Node >= 22.15 (zlib.createZstdCompress) or the zstd CLI on PATH.',
+      { cause: result.error },
     );
+  }
+  if (result.status !== 0) {
+    // Do not blame missing tooling here — zstd ran and rejected the job.
+    throw new Error(`zstd exited with status ${result.status}`);
   }
 }
 
