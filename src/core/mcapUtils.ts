@@ -111,6 +111,11 @@ class McapMessageCollector {
     }
   }
 
+  /** Which collector list a channel feeds, or undefined if it feeds neither. */
+  channelKind(channelId: number): 'rosout' | 'diagnostics' | undefined {
+    return this.channelReaders.get(channelId)?.kind;
+  }
+
   availableTopics(): TopicInfo[] {
     return Array.from(this.channelTopics.values()).map(({ topic, schemaId }) => ({
       topic,
@@ -221,23 +226,36 @@ async function readIndexed(
   // Identify channels whose schema is rosout or diagnostics so we can:
   //   1. Filter readMessages() to only relevant channels (keeps processed <= total)
   //   2. Compute total from statistics for those channels only
-  const relevantChannelIds: number[] = [];
+  const relevantChannelIds = new Set<number>();
+  let hasRosoutChannels = false;
   for (const channel of reader.channelsById.values()) {
     const schema = reader.schemasById.get(channel.schemaId);
-    if (schema && (isRosoutSchema(schema.name) || isDiagnosticsSchema(schema.name))) {
-      relevantChannelIds.push(channel.id);
+    if (!schema) continue;
+    if (isRosoutSchema(schema.name)) {
+      relevantChannelIds.add(channel.id);
+      hasRosoutChannels = true;
+    } else if (isDiagnosticsSchema(schema.name)) {
+      relevantChannelIds.add(channel.id);
     }
   }
 
   // Determine topics for the readMessages filter
-  const relevantTopics = relevantChannelIds
+  const relevantTopics = [...relevantChannelIds]
     .map((id) => reader.channelsById.get(id)?.topic)
     .filter((t): t is string => t !== undefined);
 
+  // Restrict the read to rosout/diagnostics topics when we have them: it keeps
+  // `processed` on the same population as `total`, and lets the reader skip
+  // chunks that hold nothing we collect.
+  const didFilter = relevantTopics.length > 0;
+  const readOptions = didFilter ? { topics: relevantTopics } : {};
+
   // Compute total message count for relevant channels from statistics.
   // Both values use source-record counts (not collected rows) so processed <= total holds.
+  // Without the topic filter the read spans every channel in the file, so there
+  // is no population `total` could describe — stay indeterminate there.
   let total: number | undefined;
-  if (reader.statistics && reader.statistics.channelMessageCounts) {
+  if (didFilter && reader.statistics && reader.statistics.channelMessageCounts) {
     let bigTotal = BigInt(0);
     for (const channelId of relevantChannelIds) {
       const count = reader.statistics.channelMessageCounts.get(channelId);
@@ -249,46 +267,58 @@ async function readIndexed(
     total = asNumber <= Number.MAX_SAFE_INTEGER ? asNumber : undefined;
   }
 
-  // Determine initial phase for the first emit
-  const hasRosoutChannels = relevantChannelIds.some((id) => {
-    const schema = reader.schemasById.get(reader.channelsById.get(id)?.schemaId ?? 0);
-    return schema !== undefined && isRosoutSchema(schema.name);
-  });
-  const initialPhase = hasRosoutChannels ? 'rosout' : 'diagnostics';
+  // `processed` and `total` are a pair: emit the numerator only when the
+  // denominator exists, so consumers never see a half-populated ratio.
+  const determinate = total !== undefined;
 
-  onProgress?.({ phase: initialPhase, messageCount: 0, processed: 0, total, fileSize });
+  // Only claim 'diagnostics' when diagnostics are the only relevant channels.
+  // With no relevant channels at all neither label describes the read, so keep
+  // the default.
+  let phase: 'rosout' | 'diagnostics' = didFilter && !hasRosoutChannels ? 'diagnostics' : 'rosout';
 
-  // Restrict the read to rosout/diagnostics topics when we have them: it keeps
-  // `processed` on the same population as `total`, and lets the reader skip
-  // chunks that hold nothing we collect.
-  const didFilter = relevantTopics.length > 0;
-  const readOptions = didFilter ? { topics: relevantTopics } : {};
+  const emit = (processed: number) => {
+    if (!onProgress) return;
+    const messageCount =
+      phase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
+    onProgress({
+      phase,
+      messageCount,
+      processed: determinate ? processed : undefined,
+      total,
+      fileSize,
+    });
+  };
 
+  emit(0);
+
+  // `recordCounter` counts every record the read yields — it drives throttling
+  // and the streaming-fallback decision. `processedCounter` is the progress
+  // numerator and counts only records inside `total`'s population: the topic
+  // filter also admits channels that merely share a topic with a relevant one.
+  let recordCounter = 0;
   let processedCounter = 0;
-  let lastPhase: 'rosout' | 'diagnostics' = initialPhase;
 
   for await (const message of reader.readMessages(readOptions)) {
-    processedCounter++;
+    recordCounter++;
     collector.processMessage(message.channelId, message.logTime, message.data);
 
-    // Determine current phase from this message's channel schema
-    const schema = reader.schemasById.get(reader.channelsById.get(message.channelId)?.schemaId ?? 0);
-    lastPhase = schema && isDiagnosticsSchema(schema.name) ? 'diagnostics' : 'rosout';
+    if (relevantChannelIds.has(message.channelId)) {
+      processedCounter++;
+      // Determine current phase from this message's channel schema
+      const schema = reader.schemasById.get(reader.channelsById.get(message.channelId)?.schemaId ?? 0);
+      phase = schema && isDiagnosticsSchema(schema.name) ? 'diagnostics' : 'rosout';
+    }
 
-    if (onProgress && shouldEmit(processedCounter)) {
-      const messageCount =
-        lastPhase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
-      onProgress({ phase: lastPhase, messageCount, processed: processedCounter, total, fileSize });
+    if (onProgress && shouldEmit(recordCounter)) {
+      emit(processedCounter);
       await yieldToEventLoop();
     }
   }
 
   // Final emit: the throttle above only fires on exact multiples of 100, so
   // without this the UI would under-report by up to 99 records.
-  if (onProgress && processedCounter > 0) {
-    const messageCount =
-      lastPhase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
-    onProgress({ phase: lastPhase, messageCount, processed: processedCounter, total, fileSize });
+  if (recordCounter > 0) {
+    emit(processedCounter);
   }
 
   // The streaming fallback exists for MCAPs the indexed reader cannot read at
@@ -299,7 +329,7 @@ async function readIndexed(
   // read comes up empty, probe the unfiltered stream for a single record to
   // tell the two cases apart. The probe decompresses at most one chunk and only
   // runs on the empty path.
-  let sawAnyMessageRecord = processedCounter > 0;
+  let sawAnyMessageRecord = recordCounter > 0;
   if (!sawAnyMessageRecord && didFilter) {
     for await (const probe of reader.readMessages()) {
       sawAnyMessageRecord = probe != null;
@@ -321,6 +351,17 @@ function readStreaming(
 
   const collector = new McapMessageCollector();
 
+  // Streaming has no determinate progress (processed/total stay undefined), so
+  // the phase and its message count are the only feedback the UI gets — they
+  // have to follow the channel actually being read.
+  let phase: 'rosout' | 'diagnostics' = 'rosout';
+  const emit = () => {
+    if (!onProgress) return;
+    const messageCount =
+      phase === 'diagnostics' ? collector.diagnostics.length : collector.messages.length;
+    onProgress({ phase, messageCount, fileSize });
+  };
+
   let processedCounter = 0;
   let record: TypedMcapRecord | undefined;
   while ((record = streamReader.nextRecord()) != null) {
@@ -331,27 +372,38 @@ function readStreaming(
       case 'Channel':
         collector.addChannel(record.id, record.schemaId, record.topic);
         break;
-      case 'Message':
+      case 'Message': {
         collector.processMessage(record.channelId, record.logTime, record.data);
         processedCounter++;
-        if (onProgress && shouldEmit(processedCounter)) {
-          // Streaming path: no determinate progress (processed/total undefined).
-          // Use combined message count for "something is happening" feedback.
-          const messageCount = collector.messages.length + collector.diagnostics.length;
-          onProgress({ phase: 'rosout', messageCount, fileSize });
+        const kind = collector.channelKind(record.channelId);
+        if (kind) phase = kind;
+        if (shouldEmit(processedCounter)) {
+          emit();
         }
         break;
+      }
     }
   }
 
   // Final emit: the throttle above only fires on exact multiples of 100, so
   // without this the UI would stay at 0 for files with under 100 records.
-  if (onProgress && processedCounter > 0) {
-    const messageCount = collector.messages.length + collector.diagnostics.length;
-    onProgress({ phase: 'rosout', messageCount, fileSize });
+  if (processedCounter > 0) {
+    emit();
   }
 
   return collector.result();
+}
+
+/**
+ * The indexed attempt can emit a determinate {processed, total} pair before it
+ * comes up empty or throws. readStreaming runs synchronously and never yields,
+ * so unless that state is cleared first the UI paints the last indexed event —
+ * a bar stalled at 0% — for the whole streaming parse.
+ */
+async function resetProgressBeforeStreaming(fileSize: number, onProgress?: ProgressCallback) {
+  if (!onProgress) return;
+  onProgress({ phase: 'open', messageCount: 0, fileSize });
+  await yieldToEventLoop();
 }
 
 export async function loadMcapMessages(
@@ -398,9 +450,11 @@ export async function loadMcapMessages(
         // fall back to streaming only when no Message records were seen at all
         // (a file with unrelated topics still has records, just not rosout/diag).
         if (!result.sawAnyMessageRecord) {
+          await resetProgressBeforeStreaming(fileSize, onProgress);
           result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
         }
       } catch {
+        await resetProgressBeforeStreaming(fileSize, onProgress);
         result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
       }
     } else {
@@ -408,10 +462,12 @@ export async function loadMcapMessages(
       try {
         result = await readIndexed(readable, decompressHandlers, fileSize, onProgress);
         if (!result.sawAnyMessageRecord) {
+          await resetProgressBeforeStreaming(fileSize, onProgress);
           const bytes = await source.read(0, source.size);
           result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
         }
       } catch {
+        await resetProgressBeforeStreaming(fileSize, onProgress);
         const bytes = await source.read(0, source.size);
         result = readStreaming(bytes, decompressHandlers, fileSize, onProgress);
       }

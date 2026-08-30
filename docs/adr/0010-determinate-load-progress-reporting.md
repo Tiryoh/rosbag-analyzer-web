@@ -60,6 +60,8 @@ export type ProgressCallback = (info: ProgressInfo) => void;
 ### 3. `processed` / `total` を出せる経路・出せない経路
 
 - **出せる（確定割合）**: MCAP の indexed reader。`statistics.channelMessageCounts` のうち rosout / diagnostics スキーマを持つチャンネルだけを合算して `total` を作り、`readMessages` をそのチャンネルに絞って読むことで `processed <= total` を保証する。`total` が `Number.MAX_SAFE_INTEGER` を超える場合は `undefined` にフォールバックする
+  - `total` の母集団は「絞り込み対象チャンネル」であって「読み出したレコード」ではない。`readMessages` の filter は topic 単位なので、同じ topic を共有する非対象チャンネルのレコードも流れてくる。`processed` はチャンネル ID で対象を判定して数える
+  - 対象チャンネルが 1 つも無い場合は絞り込み自体が成立せず（全チャンネルを読むことになる）、`statistics` を持たない indexed MCAP も同様に分母が無い。どちらも `processed` / `total` を `undefined` のままにする
   - この topic 絞り込みは streaming fallback の判定条件と干渉する点に注意する。fallback は「indexed reader が Message レコードを 1 件も読めない（unchunked MCAP 等）」場合に限り発火させたいが、絞り込み後の読み出しが 0 件になるのは「rosout/diagnostics チャンネルが空の正常なファイル」でも起きる。これを取り違えると ADR 0009 で回避したはずの全量 materialize + 再パースが不要に走る。したがって **絞り込み読み出しが 0 件だったときのみ、未絞り込みで 1 件だけ probe** して両者を判別する（probe のコストは最大 1 chunk の展開で、空の場合にしか発生しない）
 - **出せない（件数のみ）**:
   - ROS1 bag 全般（事前総数カウントが無い）
@@ -116,10 +118,12 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 
 ## Verification / Guardrails
 
-1. `ProgressInfo.processed` / `total` は「ソースレコード件数」であり、`processed <= total` を常に満たす。MCAP indexed では対象チャンネルに絞って読むことでこれを保証する
-2. 確定割合を出せない経路（ROS1 / streaming fallback / zstd 解凍）は `processed` / `total` を `undefined` のままにする。UI はその場合に不定形アニメーションへフォールバックする
-3. `src/core/**` は進捗報告のために DOM API（`requestAnimationFrame` 等）を参照しない。yield は `setTimeout(_, 0)` で行う
-4. `onProgress` は optional で、未指定でもロード結果は変わらない
-5. 各読み出しループの直後に最終 emit があること。100 件未満のファイルでも最終件数が UI に届く
-6. streaming fallback は「indexed reader が 1 件も読めない」場合のみ発火する。topic 絞り込みの結果 0 件になったケースを fallback 条件に直結させない
-7. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP（streaming fallback）でも emit されること、100 件未満のファイルで最終件数が emit されることを確認する
+1. `ProgressInfo.processed` / `total` は「ソースレコード件数」であり、`processed <= total` を常に満たす。MCAP indexed では対象チャンネルに絞って読み、対象チャンネルのレコードだけを数えることでこれを保証する
+2. 確定割合を出せない経路（ROS1 / streaming fallback / zstd 解凍 / 分母を作れない indexed MCAP）は `processed` / `total` を `undefined` のままにする。UI はその場合に不定形アニメーションへフォールバックする。`processed` だけ・`total` だけを持つ中途半端なイベントは出さない
+3. indexed で確定イベントを emit したあと streaming fallback に落ちる場合は、`readStreaming` に入る前に `processed` / `total` を持たないイベントを 1 回 emit して yield する。`readStreaming` は同期実行で途中 yield できないため、これが無いと直前の確定イベント（多くは 0%）のまま画面が固まる
+4. `src/core/**` は進捗報告のために DOM API（`requestAnimationFrame` 等）を参照しない。yield は `setTimeout(_, 0)` で行う
+5. `onProgress` は optional で、未指定でもロード結果は変わらない
+6. 各読み出しループの直後に最終 emit があること。100 件未満のファイルでも最終件数が UI に届く
+7. streaming fallback は「indexed reader が 1 件も読めない」場合のみ発火する。topic 絞り込みの結果 0 件になったケースを fallback 条件に直結させない
+8. `phase` と `messageCount` は常に対になる。streaming fallback でも読んでいるチャンネルの種別から `phase` を決め、その種別の収集件数（`messages.length` / `diagnostics.length`）を報告する。両者を混ぜた合計件数は出さない
+9. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP でも emit されること、100 件未満のファイルで最終件数が emit されることを確認する。加えて、`processed` を伴うイベントが必ず `total` を持つこと、statistics を持たない indexed MCAP が不定形のままであること、unchunked MCAP で fallback 前に確定状態が解除されること、diagnostics のみの unchunked MCAP が `phase: 'diagnostics'` を報告することを回帰テストで固定する
