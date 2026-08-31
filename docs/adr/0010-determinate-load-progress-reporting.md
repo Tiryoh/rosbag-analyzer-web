@@ -5,7 +5,7 @@
 
 ## Context
 
-これまでのロード中 UI は、進捗量を持たない不定形のアニメーション（`loading-bar`）だけだった。
+これまでのロード中 UI は、進捗率を示さないアニメーション（`loading-bar`）だけだった。
 ADR 0009 で `Blob.slice` ベースの遅延ロードに切り替え、数百 MB 〜 1 GB クラスの bag を開けるようになった結果、ロードに数秒〜数十秒かかるケースが現実的になり、「どれくらい進んでいるか」「フリーズしていないか」をユーザーに示す必要が出てきた。
 
 当初のラフ案（作業メモ）は「`chunkInfos` の chunk index / chunk total で割合を出す」というものだったが、実装に入ると次の問題が見えた。
@@ -38,7 +38,7 @@ export interface ProgressInfo {
 export type ProgressCallback = (info: ProgressInfo) => void;
 ```
 
-`processed` / `total` は **確定的な割合を出せる経路でのみ** 値を持ち、出せない経路では `undefined` とする。UI は両方が揃っているときだけ確定プログレスバー（`processed / total`）を描画し、欠けているときは従来の不定形アニメーションにフォールバックする。
+`processed` / `total` は **確定的な割合を出せる経路でのみ** 値を持ち、出せない経路では `undefined` とする。UI は両方が揃っているときだけ確定プログレスバー（`processed / total`）を描画し、欠けているときは従来どおり、進捗率を示さないアニメーションにフォールバックする。
 
 ## Decision Details
 
@@ -72,11 +72,11 @@ export type ProgressCallback = (info: ProgressInfo) => void;
 
 - 進捗 emit は **経過時間** で間引く（`createProgressThrottle(intervalMs)`、既定 50ms = 秒 20 回）。毎メッセージ emit は React の再描画を過剰に誘発する
   - **件数ベース（「N レコードごと」）は採らない。** yield 1 回は `setTimeout` のクランプで実測 約 2ms かかるので、件数ベースだと yield 回数がファイルサイズに線形に増える。50 万件の MCAP では、約 14 秒のロードのうち 11 秒が timer 待ちだった（emit 5,054 回 × 約 2ms ≈ 10.1 秒と一致する）。時間ベースなら yield 回数は「経過時間 ÷ interval」で頭打ちになり、ファイルサイズに依存しない
-  - この構造上、進捗レポートのオーバーヘッドは **割合として上限が決まる**。1 interval につき yield は高々 1 回なので、yield コスト ÷ interval が上限になる。ブラウザがネストした `setTimeout(_, 0)` を 4ms にクランプする最悪ケースでも約 7% を超えない
+  - この構造から、**進捗レポートがロード時間に占める割合には上限がある**。1 interval につき yield は高々 1 回なので、上限は `yield コスト ÷ interval` になる。ブラウザがネストした `setTimeout(_, 0)` を 4ms にクランプする最悪のケースでも、約 7% を超えない
   - 代償として `Date.now()` を毎レコード呼ぶ。50 万件で約 40ms（ロード全体の 1.5%）なので許容する。カウンタで先に間引く 2 段構えは、この数字が問題になるまで持ち込まない
 - throttle は interval 内に来た更新を落とすため、**各読み出しループの終了直後に必ず最終 emit を行う**。これがないと最後に throttle を通過した時点の件数で止まり、1 interval 未満で終わるファイルでは 0 のままになる
 - `readMessages` の同期コールバック内からは `await` できないため、yield はフェーズ境界（rosout→diagnostics、reindex 前）と MCAP indexed の emit 直後に `yieldToEventLoop()` で行い、React が進捗 state を flush できるようにする
-- `yieldToEventLoop` は `setTimeout(_, 0)` で実装する。`requestAnimationFrame` は **使わない** — `src/core/` はブラウザ外でも動く必要があり（ADR 0008）、DOM API に依存させないため
+- `yieldToEventLoop` は `setTimeout(_, 0)` で実装する。`requestAnimationFrame` は **使わない**。`src/core/` はブラウザ外でも動く必要があり（ADR 0008）、DOM API に依存させてはならないため
 
 ### 5. core / web 境界
 
@@ -98,7 +98,7 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 ### Alternative 3: ファイル読み出し（バイト）進捗を出す
 
 不採用（将来再検討可）。
-`Blob.slice().arrayBuffer()` の遅延読みはパース側が随時呼ぶため、バイト進捗を取るには `ReadableStream` への切り替えが必要で影響範囲が大きい。本 ADR のレコード件数ベースで「進んでいる感」は十分得られる。
+`Blob.slice().arrayBuffer()` の遅延読みはパース側が随時呼ぶため、バイト進捗を取るには `ReadableStream` への切り替えが必要で影響範囲が大きい。本 ADR のレコード件数ベースでも、処理が止まらずに進んでいることは十分に伝わる。
 
 ## Consequences
 
@@ -113,9 +113,9 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 
 - `messageCount` の意味がフェーズによって変わる（rosout 件数 / diagnostics 状態変化件数）ため、消費側はフェーズを見て解釈する必要がある
 - loader 内に進捗 emit と yield 呼び出しが点在し、パースのホットパスにオーバーヘッドが乗る。50 万件の MCAP（`e2e/fixtures/generate_large_mcap.ts` の既定出力、展開後 94 MiB）で **+約 110ms（ロード時間の約 5%）**。内訳は約 40 回の yield（約 80ms）と毎レコードの `Date.now()`（約 40ms）で、理論値と一致する。interval を上げれば減らせるが、バーの滑らかさとのトレードオフになる
-  - 計測は交互に 7 回ずつ走らせた **最小値** で比較すること。単発の A/B は当てにならない — 同一マシンで delta が −1.0 秒〜+1.7 秒まで振れ、符号すら反転した。ロード自体が 500k 個のオブジェクトを確保するため GC の影響が大きく、平均や 1 回の測定はノイズに埋もれる
-- ブラウザ（Chromium）でも確認済み。同じフィクスチャでファイル選択から結果表示まで 2.47 秒、バーの視覚的に異なる状態は 37、状態間の間隔は中央値 50ms。**ネストした `setTimeout(_, 0)` が 4ms にクランプされる影響を警戒していたが、間隔が interval どおりに出ているので観測されなかった**。Node のベースライン（2.15〜2.46 秒）とも同等
-  - 例外は zstd の全量展開ステップで、ここだけ約 0.6 秒にわたり確定的な更新が無い（§3 のとおり確定割合を出せない経路）。この区間は不定形アニメーションが担当するため体感上の停止にはならない
+  - 計測は交互に 7 回ずつ走らせた **最小値** で比較すること。単発の A/B は当てにならない。同一マシンでも delta が −1.0 秒〜+1.7 秒まで振れ、符号すら反転した。ロード自体が 500k 個のオブジェクトを確保するため GC の影響が大きく、平均や 1 回の測定はノイズに埋もれる
+- ブラウザ（Chromium）でも確認済み。同じフィクスチャで、ファイル選択から結果表示まで 2.47 秒だった。バーの表示が変わったのは 37 回で、変化の間隔は中央値 50ms と、設定した interval に一致する。**ネストした `setTimeout(_, 0)` が 4ms にクランプされる影響を警戒していたが、間隔が interval どおりに出ているため、影響は観測されなかった**。Node のベースライン（2.15〜2.46 秒）とも同等である
+  - 例外は zstd の全量展開ステップで、ここだけ約 0.6 秒にわたり確定的な更新が無い（§3 のとおり確定割合を出せない経路）。この区間は進捗率を示さないアニメーションが動き続けるため、体感上の停止にはならない
 - throttle が状態を持つようになったため、読み出しループごとに `createProgressThrottle()` を作る必要がある。使い回すとループ間で interval が引き継がれ、後続ループの最初の emit が落ちる
 
 ### Operational Impact
@@ -126,15 +126,19 @@ MCAP indexed では確定割合を安価に出せるのに、それを捨てる�
 ## Verification / Guardrails
 
 1. `ProgressInfo.processed` / `total` は「ソースレコード件数」であり、`processed <= total` を常に満たす。MCAP indexed では対象チャンネルに絞って読み、対象チャンネルのレコードだけを数えることでこれを保証する
-2. 確定割合を出せない経路（ROS1 / streaming fallback / zstd 解凍 / 分母を作れない indexed MCAP）は `processed` / `total` を `undefined` のままにする。UI はその場合に不定形アニメーションへフォールバックする。`processed` だけ・`total` だけを持つ中途半端なイベントは出さない
+2. 確定割合を出せない経路（ROS1 / streaming fallback / zstd 解凍 / 分母を作れない indexed MCAP）は `processed` / `total` を `undefined` のままにする。UI はその場合、進捗率を示さないアニメーションへフォールバックする。`processed` だけ・`total` だけを持つ中途半端なイベントは出さない
 3. indexed で確定イベントを emit したあと streaming fallback に落ちる場合は、`readStreaming` に入る前に `processed` / `total` を持たないイベントを 1 回 emit して yield する。`readStreaming` は同期実行で途中 yield できないため、これが無いと直前の確定イベント（多くは 0%）のまま画面が固まる
 4. `src/core/**` は進捗報告のために DOM API（`requestAnimationFrame` 等）を参照しない。yield は `setTimeout(_, 0)` で行う
 5. `onProgress` は optional で、未指定でもロード結果は変わらない
 6. 各読み出しループの直後に最終 emit があること。1 interval 未満で終わるファイルでも最終件数が UI に届く
 7. 進捗 emit の回数はレコード数ではなく経過時間で決まること。同じ内容でレコード数だけが N 倍のファイルを読んでも emit 回数は N 倍にならない
    - 確認方法（Node）: `e2e/fixtures/generate_large_mcap.ts` で大きいフィクスチャを作り、`onProgress` の有無を交互に 7 回ずつ走らせて **最小値** を比較する。単発の A/B はノイズに埋もれる（Consequences 参照）
-   - 確認方法（ブラウザ）: ページ側で `requestAnimationFrame` ごとにプログレスバーの `style.width` とラベルを記録し、**視覚的に異なる状態** に畳んでから状態間の間隔を見る。中央値が interval（既定 50ms）付近に乗っていれば間引きが設計どおり効いている。`rAF` は描画のタイミングでしか回らないので、画面に出ていない state 更新を数えずに済む
+   - 確認方法（ブラウザ）: ページ側で `requestAnimationFrame` ごとにプログレスバーの `style.width` とラベルを記録し、連続する同じ値を 1 つにまとめてから、値が変わった時点どうしの間隔を見る。中央値が interval（既定 50ms）付近に収まっていれば、間引きは設計どおり効いている。`rAF` は描画のタイミングでしか回らないので、画面に出ていない state 更新を数えずに済む
    - ブラウザを起動して DOM を読むような、**結合テストに近い計測スクリプトは commit しない**。UI のセレクタやテストフレームワークの構成が変わるたびに追随が必要になる一方、実際に走らせるのは間引きの挙動を疑ったときだけなので、維持コストに見合わない。必要になった時点で、その時の構成に合わせて書く。ADR に残すのは方法だけでよい
 8. streaming fallback は「indexed reader が 1 件も読めない」場合のみ発火する。topic 絞り込みの結果 0 件になったケースを fallback 条件に直結させない
 9. `phase` と `messageCount` は常に対になる。streaming fallback でも読んでいるチャンネルの種別から `phase` を決め、その種別の収集件数（`messages.length` / `diagnostics.length`）を報告する。両者を混ぜた合計件数は出さない
-10. テスト: ROS1 で `open → rosout` が emit され `messageCount` が単調非減少であること、未 index bag で `reindex` が emit されること、indexed MCAP で `processed <= total` を満たす確定イベントが出ること、rosout/diagnostics の無い MCAP でも emit されること、1 interval 未満で終わるファイルで最終件数が emit されることを確認する。加えて、`processed` を伴うイベントが必ず `total` を持つこと、statistics を持たない indexed MCAP が不定形のままであること、unchunked MCAP で fallback 前に確定状態が解除されること、diagnostics のみの unchunked MCAP が `phase: 'diagnostics'` を報告すること、`createProgressThrottle` が呼び出し回数ではなく経過時間で発火することを回帰テストで固定する
+10. 回帰テストで次を固定する
+    - ROS1: `open → rosout` の順に emit され、`messageCount` が単調非減少であること。未 index bag では `reindex` も emit されること
+    - indexed MCAP: `processed <= total` を満たす確定イベントが出ること。`processed` を伴うイベントは必ず `total` も持つこと。statistics を持たない MCAP は確定イベントを出さないこと
+    - streaming fallback: rosout / diagnostics の無い MCAP でも emit されること。unchunked MCAP では fallback に入る前に確定状態が解除されること。diagnostics のみの unchunked MCAP は `phase: 'diagnostics'` を報告すること
+    - 経路によらず: 1 interval 未満で終わるファイルでも最終件数が emit されること。`createProgressThrottle` が呼び出し回数ではなく経過時間で発火すること
