@@ -419,9 +419,7 @@ export async function loadMcapMessages(
   hasDiagnostics: boolean;
   availableTopics: TopicInfo[];
 }> {
-  console.log('=== Starting MCAP load ===');
-  console.log('File name:', source.name);
-  console.log('File size:', source.size, 'bytes');
+  console.log(`Loading MCAP: ${source.name} (${source.size} bytes)`);
 
   try {
     const decompressHandlers: DecompressHandlers = {
@@ -476,16 +474,14 @@ export async function loadMcapMessages(
       }
     }
 
-    console.log(`✓ Successfully loaded ${result.messages.length} rosout messages from ${result.uniqueNodes.size} nodes`);
+    console.log(`Loaded ${result.messages.length} rosout messages from ${result.uniqueNodes.size} nodes`);
     if (result.hasDiagnostics) {
-      console.log(`✓ Successfully loaded ${result.diagnostics.length} diagnostics entries`);
+      console.log(`Loaded ${result.diagnostics.length} diagnostics state changes`);
     }
 
     return result;
   } catch (error) {
-    console.error('!!! Error loading MCAP file !!!');
-    console.error('Error type:', error?.constructor?.name);
-    console.error('Error message:', error);
+    console.error('Failed to load MCAP file:', error);
     throw error;
   }
 }

@@ -122,9 +122,6 @@ function App() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    console.log('=== File upload started ===');
-    console.log('Selected file:', file.name);
-
     setLoading(true);
     setError('');
     setReindexedBytes(null);
@@ -135,13 +132,8 @@ function App() {
     setAvailableTopics([]);
 
     try {
-      console.log('Calling loadMessages...');
       const source = fileToBagSource(file);
       const result = await loadMessages(source, setProgress);
-      console.log('loadMessages completed successfully');
-      console.log('Messages loaded:', result.messages.length);
-      console.log('Unique nodes:', result.uniqueNodes.size);
-      console.log('Diagnostics:', result.diagnostics.length, 'hasDiagnostics:', result.hasDiagnostics);
 
       if (result.reindexedBytes) {
         setReindexedBytes(result.reindexedBytes);
@@ -173,9 +165,8 @@ function App() {
       setActiveTab(result.messages.length > 0 ? 'rosout' : 'diagnostics');
       setAvailableTopics(result.availableTopics);
       setLoadCompleted(true);
-      console.log('State updated successfully');
     } catch (err) {
-      console.error('Error in handleFileUpload:', err);
+      console.error('File upload failed:', err);
       if (isReindexFailureLike(err)) {
         setReindexBlockers(err.blockers);
         setError(t('error.reindexFailed'));
@@ -187,7 +178,6 @@ function App() {
     } finally {
       setProgress(null);
       setLoading(false);
-      console.log('=== File upload completed ===');
     }
   };
 
