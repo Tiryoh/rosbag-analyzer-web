@@ -5,38 +5,33 @@
 
 ## Context
 
-当初、エクスポート形式の一つとして SQLite を採用していた。SQL 構文でログを検索できることが利点だった。
-
-しかし実際の利用を考えると、DuckDB が Parquet ファイルを直接 SQL で検索できるため、SQLite の中間フォーマットとしての役割は薄い。Parquet は列指向でファイルサイズが小さく、DuckDB・pandas・polars など多くのツールでネイティブに読める。
+当初はログを SQL で検索できるように SQLite エクスポートを提供していた。
+しかし、DuckDB では Parquet を直接 SQL で検索できるため、中間形式としての SQLite を省ける。
+Parquet は列指向でファイルサイズを抑えられ、pandas や Polars でも扱える。
 
 ## Decision
 
-SQLite エクスポートを削除し、Parquet エクスポートに置換する。
+SQLite エクスポートを廃止し、Parquet エクスポートへ置換する。
 
 ## Decision Details
 
-- `hyparquet-writer` を使用してブラウザ上で Parquet ファイルを生成
-- rosout / diagnostics それぞれに Parquet エクスポートを提供
-- SQLite 関連の依存（`sql.js`）を削除しバンドルサイズを削減
-- README に DuckDB での読み方の例を記載
+- `hyparquet-writer` を使用し、ブラウザ上で Parquet ファイルを生成する。
+- rosout および diagnostics の双方で Parquet 出力を提供する。
+- SQLite 用の `sql.js` 依存を削除する。
+- README に DuckDB での読み取り例を記載する。
 
 ## Alternatives Considered
 
-### SQLite を残して Parquet を追加
-
-不採用。エクスポート形式が増えすぎる（CSV, JSON, TXT, SQLite, Parquet）。SQLite と Parquet の用途が重複しており、保守コストに見合わない。
-
-### SQLite のみ継続
-
-不採用。Parquet のほうがエコシステムのサポートが広く、ファイルサイズも小さい。DuckDB で SQL 検索もできるため SQLite の優位性がない。
+- SQLite と Parquet の併存：用途が重複し、並行して保守するコストに見合わないため不採用。
+- SQLite のみ継続：SQL 検索を維持しつつ、ファイルサイズと分析ツールへの対応を改善できる Parquet を選ぶ。
 
 ## Consequences
 
-- バンドルサイズ削減（sql.js の wasm バイナリが不要に）
-- DuckDB + Parquet で SQL 検索が可能（`SELECT * FROM 'export.parquet' WHERE severity = 'ERROR'`）
-- SQLite 形式を期待していたユーザーは DuckDB への移行が必要
+- `sql.js` の WebAssembly バイナリが不要になり、アプリのバンドルサイズが縮小する。
+- 出力ファイルを DuckDB で直接 SQL 検索できる。
+- SQLite 出力を前提とするワークフローは移行が必要になる。
 
 ## Verification / Guardrails
 
-- Parquet エクスポートの内容を `hyparquet` で読み戻すユニットテストで検証
-- E2E テストでダウンロードが正常に発生することを検証
+1. Parquet 出力を `hyparquet` で読み戻し、内容をユニットテストで検証する。
+2. Parquet ファイルのダウンロードを E2E テストで検証する。
