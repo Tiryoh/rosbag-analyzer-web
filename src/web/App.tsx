@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from '../core/reindexUtils';
-import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo } from '../core/types';
+import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo, ProgressInfo } from '../core/types';
 import { BagLoadError, SEVERITY_LEVELS, DIAGNOSTIC_LEVEL_NAMES } from '../core/types';
 import { SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './severityStyles';
 import {
@@ -61,6 +61,7 @@ function App() {
   const [filteredMessages, setFilteredMessages] = useState<RosoutMessage[]>([]);
   const [uniqueNodes, setUniqueNodes] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<ProgressInfo | null>(null);
   const [error, setError] = useState<string>('');
 
   // Filter states
@@ -121,9 +122,6 @@ function App() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    console.log('=== File upload started ===');
-    console.log('Selected file:', file.name);
-
     setLoading(true);
     setError('');
     setReindexedBytes(null);
@@ -134,13 +132,8 @@ function App() {
     setAvailableTopics([]);
 
     try {
-      console.log('Calling loadMessages...');
       const source = fileToBagSource(file);
-      const result = await loadMessages(source);
-      console.log('loadMessages completed successfully');
-      console.log('Messages loaded:', result.messages.length);
-      console.log('Unique nodes:', result.uniqueNodes.size);
-      console.log('Diagnostics:', result.diagnostics.length, 'hasDiagnostics:', result.hasDiagnostics);
+      const result = await loadMessages(source, setProgress);
 
       if (result.reindexedBytes) {
         setReindexedBytes(result.reindexedBytes);
@@ -172,9 +165,8 @@ function App() {
       setActiveTab(result.messages.length > 0 ? 'rosout' : 'diagnostics');
       setAvailableTopics(result.availableTopics);
       setLoadCompleted(true);
-      console.log('State updated successfully');
     } catch (err) {
-      console.error('Error in handleFileUpload:', err);
+      console.error('File upload failed:', err);
       if (isReindexFailureLike(err)) {
         setReindexBlockers(err.blockers);
         setError(t('error.reindexFailed'));
@@ -184,8 +176,8 @@ function App() {
         setError(appendErrorDetail(t('error.failedToLoad'), err));
       }
     } finally {
+      setProgress(null);
       setLoading(false);
-      console.log('=== File upload completed ===');
     }
   };
 
@@ -558,11 +550,28 @@ function App() {
         {loading && (
           <div className="mb-8 animate-fade-in">
             <div className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full loading-bar" />
+              {progress?.processed != null && progress?.total != null && progress.total > 0 ? (
+                <div
+                  className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full"
+                  style={{ width: `${(progress.processed / progress.total) * 100}%`, transition: 'width 0.3s ease' }}
+                />
+              ) : (
+                <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full loading-bar" />
+              )}
             </div>
             <p className="mt-3 text-center text-sm text-surface-500 dark:text-surface-400">
-              {uploadedFileName ? tf('loading.withFileName', { fileName: uploadedFileName }) : t('loading.message')}
+              {progress != null
+                ? t(`progress.phase.${progress.phase}`)
+                : uploadedFileName
+                  ? tf('loading.withFileName', { fileName: uploadedFileName })
+                  : t('loading.message')}
             </p>
+            {progress != null && (
+              <p className="mt-1 text-center text-xs text-surface-400 dark:text-surface-500">
+                {tf('progress.parsed', { count: progress.messageCount.toLocaleString() })}
+                {` (${(progress.fileSize / (1024 * 1024)).toFixed(1)} MB)`}
+              </p>
+            )}
           </div>
         )}
 

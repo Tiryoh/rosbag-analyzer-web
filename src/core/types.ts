@@ -85,3 +85,24 @@ export const DIAGNOSTIC_LEVEL_NAMES: Record<number, string> = {
   2: 'ERROR',
   3: 'STALE',
 };
+
+export type LoadPhase = 'open' | 'reindex' | 'rosout' | 'diagnostics';
+
+/**
+ * Progress info emitted from loaders.
+ *
+ * `messageCount` is the number of rows the UI will eventually see (rosout
+ * pushes / diagnostics state-change entries). `processed`/`total` are
+ * source-record counts used to compute a determinate percentage; both are
+ * undefined when a determinate value cannot be produced (ROS1, MCAP streaming
+ * fallback, zstd-wrapped MCAP during materialization).
+ */
+export interface ProgressInfo {
+  phase: LoadPhase;
+  messageCount: number;
+  processed?: number;
+  total?: number;
+  fileSize: number;
+}
+
+export type ProgressCallback = (info: ProgressInfo) => void;
