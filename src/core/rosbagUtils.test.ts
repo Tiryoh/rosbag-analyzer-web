@@ -2,6 +2,9 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
+import { McapIndexedReader, McapWriter, TempBuffer } from '@mcap/core';
+import type { IReadable } from '@mcap/core';
+import { decompress as zstdDecompress } from 'fzstd';
 import { parquetReadObjects } from 'hyparquet';
 import { ReindexFailureError } from './reindexUtils';
 import {
@@ -12,7 +15,7 @@ import {
   escapeCSV,
   loadMessages,
 } from './rosbagUtils';
-import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
+import type { BagSource, RosoutMessage, DiagnosticStatusEntry, SeverityLevel, ProgressInfo } from './types';
 
 // -- Test fixtures --
 
@@ -753,5 +756,211 @@ describe('loadMessages availableTopics', () => {
     expect(result.availableTopics).toEqual([
       { topic: '/sensor/lidar/scan', type: 'sensor_msgs/LaserScan' },
     ]);
+  });
+});
+
+// ==================== onProgress ====================
+
+class Uint8ArrayReadable implements IReadable {
+  constructor(private readonly bytes: Uint8Array) {}
+  async size(): Promise<bigint> {
+    return BigInt(this.bytes.byteLength);
+  }
+  async read(offset: bigint, length: bigint): Promise<Uint8Array> {
+    return this.bytes.slice(Number(offset), Number(offset + length));
+  }
+}
+
+/**
+ * Rewrites the `test_sample.mcap` fixture with different writer options.
+ *
+ * Progress reporting branches on file layout: an unchunked file makes the
+ * indexed reader come up empty and falls back to the streaming reader, and a
+ * file without a Statistics record cannot produce a determinate ratio. Neither
+ * shape exists on disk, and copying the fixture keeps the payloads real so the
+ * collector still parses them.
+ */
+async function rebuildSampleMcap(options: {
+  useChunks?: boolean;
+  useStatistics?: boolean;
+  only?: 'rosout' | 'diagnostics';
+} = {}): Promise<Uint8Array> {
+  const { useChunks = true, useStatistics = true, only } = options;
+  const source = await loadFixtureSource('test_sample.mcap');
+  const reader = await McapIndexedReader.Initialize({
+    readable: new Uint8ArrayReadable(await source.read(0, source.size)),
+    decompressHandlers: { zstd: (data) => zstdDecompress(new Uint8Array(data)) },
+  });
+
+  const keptChannelIds = new Set<number>();
+  for (const channel of reader.channelsById.values()) {
+    const schemaName = reader.schemasById.get(channel.schemaId)?.name;
+    const kind = schemaName === 'rcl_interfaces/msg/Log' ? 'rosout'
+      : schemaName === 'diagnostic_msgs/msg/DiagnosticArray' ? 'diagnostics'
+      : undefined;
+    if (only === undefined || kind === only) keptChannelIds.add(channel.id);
+  }
+
+  const buffer = new TempBuffer();
+  const writer = new McapWriter({ writable: buffer, useChunks, useStatistics });
+  await writer.start({ profile: 'ros2', library: 'rosbag-analyzer-web tests' });
+
+  const schemaIds = new Map<number, number>();
+  const channelIds = new Map<number, number>();
+  for (const channel of reader.channelsById.values()) {
+    if (!keptChannelIds.has(channel.id)) continue;
+    const schema = reader.schemasById.get(channel.schemaId)!;
+    if (!schemaIds.has(schema.id)) {
+      schemaIds.set(schema.id, await writer.registerSchema({
+        name: schema.name,
+        encoding: schema.encoding,
+        data: schema.data,
+      }));
+    }
+    channelIds.set(channel.id, await writer.registerChannel({
+      schemaId: schemaIds.get(schema.id)!,
+      topic: channel.topic,
+      messageEncoding: channel.messageEncoding,
+      metadata: channel.metadata,
+    }));
+  }
+  for await (const message of reader.readMessages()) {
+    if (!keptChannelIds.has(message.channelId)) continue;
+    await writer.addMessage({
+      channelId: channelIds.get(message.channelId)!,
+      sequence: message.sequence,
+      logTime: message.logTime,
+      publishTime: message.publishTime,
+      data: message.data,
+    });
+  }
+  await writer.end();
+  return buffer.get();
+}
+
+describe('loadMessages onProgress', () => {
+  it('emits open → rosout phases with monotonically nondecreasing messageCount for a ROS1 bag', async () => {
+    const source = await loadFixtureSource('test_sample.bag');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].phase).toBe('open');
+    expect(events[0].fileSize).toBe(source.size);
+    const phases = new Set(events.map(e => e.phase));
+    expect(phases.has('rosout')).toBe(true);
+
+    const rosoutCounts = events.filter(e => e.phase === 'rosout').map(e => e.messageCount);
+    for (let i = 1; i < rosoutCounts.length; i++) {
+      expect(rosoutCounts[i]).toBeGreaterThanOrEqual(rosoutCounts[i - 1]);
+    }
+    // ROS1 path does not produce determinate progress.
+    expect(events.every(e => e.processed === undefined && e.total === undefined)).toBe(true);
+  });
+
+  it('emits a reindex phase when loading an unindexed ROS1 bag', async () => {
+    const source = await loadFixtureSource('test_unindexed.bag');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+    expect(events.some(e => e.phase === 'reindex')).toBe(true);
+  });
+
+  it('emits processed/total for an indexed MCAP and respects processed <= total', async () => {
+    const source = await loadFixtureSource('test_sample.mcap');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+
+    const determinate = events.filter(e => e.processed !== undefined && e.total !== undefined);
+    expect(determinate.length).toBeGreaterThan(0);
+    for (const e of determinate) {
+      expect(e.processed!).toBeLessThanOrEqual(e.total!);
+    }
+  });
+
+  it('emits a final rosout count for a ROS1 bag that loads within one throttle interval', async () => {
+    const source = await loadFixtureSource('test_sample.bag');
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(source, (info) => events.push(info));
+
+    // These fixtures load in well under one throttle interval, so the throttle
+    // never passes and the final count can only come from the post-loop emit.
+    expect(result.messages.length).toBeGreaterThan(0);
+    expect(result.messages.length).toBeLessThan(100);
+    const rosoutEvents = events.filter(e => e.phase === 'rosout');
+    expect(rosoutEvents[rosoutEvents.length - 1].messageCount).toBe(result.messages.length);
+  });
+
+  it('emits a final count for an indexed MCAP that loads within one throttle interval', async () => {
+    const source = await loadFixtureSource('test_sample.mcap');
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(source, (info) => events.push(info));
+
+    expect(result.messages.length).toBeGreaterThan(0);
+    expect(result.messages.length).toBeLessThan(100);
+    const rosoutEvents = events.filter(e => e.phase === 'rosout');
+    expect(rosoutEvents[rosoutEvents.length - 1].messageCount).toBe(result.messages.length);
+  });
+
+  it('emits progress without processed/total for an MCAP that has no rosout/diagnostics (streaming fallback)', async () => {
+    const source = await loadFixtureSource('test_sample_no_rosout.mcap');
+    const events: ProgressInfo[] = [];
+    await loadMessages(source, (info) => events.push(info));
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].phase).toBe('open');
+  });
+
+  for (const name of ['test_sample.mcap', 'test_sample.mcap.zstd', 'test_sample_no_rosout.mcap']) {
+    it(`never emits processed without a total, nor processed above total (${name})`, async () => {
+      const source = await loadFixtureSource(name);
+      const events: ProgressInfo[] = [];
+      await loadMessages(source, (info) => events.push(info));
+
+      for (const event of events) {
+        if (event.processed === undefined) continue;
+        expect(event.total).toBeDefined();
+        expect(event.processed).toBeLessThanOrEqual(event.total!);
+      }
+    });
+  }
+
+  it('omits processed/total for an indexed MCAP with no Statistics record', async () => {
+    const bytes = await rebuildSampleMcap({ useStatistics: false });
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(bytesToBagSource('no_statistics.mcap', bytes), (info) => events.push(info));
+
+    expect(result.messages.length).toBeGreaterThan(0);
+    expect(events.every(e => e.processed === undefined && e.total === undefined)).toBe(true);
+  });
+
+  it('clears determinate progress before falling back to the streaming reader', async () => {
+    const bytes = await rebuildSampleMcap({ useChunks: false });
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(bytesToBagSource('unchunked.mcap', bytes), (info) => events.push(info));
+
+    // The indexed attempt reports processed/total from statistics before it
+    // comes up empty. The streaming reader that follows runs synchronously, so
+    // a leftover determinate pair would freeze the UI bar at that ratio.
+    expect(result.messages.length).toBeGreaterThan(0);
+    let lastDeterminate = -1;
+    events.forEach((event, index) => {
+      if (event.processed !== undefined) lastDeterminate = index;
+    });
+    expect(lastDeterminate).toBeGreaterThanOrEqual(0);
+    expect(lastDeterminate).toBeLessThan(events.length - 1);
+    expect(events[lastDeterminate + 1].phase).toBe('open');
+    const afterFallback = events.slice(lastDeterminate + 1);
+    expect(afterFallback.every(e => e.processed === undefined && e.total === undefined)).toBe(true);
+  });
+
+  it('reports the diagnostics phase and count for a diagnostics-only streaming fallback', async () => {
+    const bytes = await rebuildSampleMcap({ useChunks: false, only: 'diagnostics' });
+    const events: ProgressInfo[] = [];
+    const result = await loadMessages(bytesToBagSource('unchunked_diagnostics.mcap', bytes), (info) => events.push(info));
+
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.messages.length).toBe(0);
+    const last = events[events.length - 1];
+    expect(last.phase).toBe('diagnostics');
+    expect(last.messageCount).toBe(result.diagnostics.length);
   });
 });

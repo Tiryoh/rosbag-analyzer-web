@@ -16,6 +16,11 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // Loading / Error
     'loading.message': 'Loading bag file...',
     'loading.withFileName': 'Loading {fileName}…',
+    'progress.phase.open': 'Opening file',
+    'progress.phase.reindex': 'Rebuilding index',
+    'progress.phase.rosout': 'Reading rosout',
+    'progress.phase.diagnostics': 'Reading diagnostics',
+    'progress.parsed': '{count} messages parsed',
     'error.title': 'Error loading bag file',
     'error.reindexFailed': 'No readable chunks found in bag file. See recovery blockers below.',
     'error.emptyFile': 'Empty file. The selected file contains no data.',
@@ -130,6 +135,11 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     // Loading / Error
     'loading.message': '読み込み中...',
     'loading.withFileName': '{fileName} を読み込み中…',
+    'progress.phase.open': 'ファイルを開いています',
+    'progress.phase.reindex': 'インデックスを再構築しています',
+    'progress.phase.rosout': 'rosout を読み込んでいます',
+    'progress.phase.diagnostics': 'diagnostics を読み込んでいます',
+    'progress.parsed': '{count} 件パース済み',
     'error.title': '読み込みエラー',
     'error.reindexFailed': '読み取り可能なchunkがありません。下記の復旧阻害要因を確認してください。',
     'error.emptyFile': '空のファイルです。データが含まれていません。',
