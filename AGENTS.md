@@ -31,7 +31,7 @@ Substitute `aube` for `npm` if you have it installed.
 
 Single-page React+TypeScript app using Vite and Tailwind CSS. Source code is split into two top-level directories:
 
-- **`src/core/`** — Platform-agnostic parsing and filtering. Accepts a `BagSource` (`{ name, data: Uint8Array }`) rather than a DOM `File`, so the same code runs in the browser today and can be reused from Node-based TUIs/CLIs later. Must not import from `src/web/`.
+- **`src/core/`** — Platform-agnostic parsing and filtering. Accepts a `BagSource` (`{ name, size, read(offset, length) }`) rather than a DOM `File`, so the same code runs in the browser today and can be reused from Node-based TUIs/CLIs later. Must not import from `src/web/`.
 - **`src/web/`** — Browser-only React UI, styling, and DOM-side adapters (File upload, downloads).
 
 Core modules:
