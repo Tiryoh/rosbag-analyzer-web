@@ -133,4 +133,26 @@ describe('sqlValidator', () => {
       expect(() => validateSql('SELECT * FROM rosout; DROP TABLE test')).toThrow(SqlValidationError);
     });
   });
+
+  describe('string literal edge cases', () => {
+    it('should allow semicolons inside string literals', () => {
+      expect(() => validateSql("SELECT * FROM rosout WHERE message = 'a;b'")).not.toThrow();
+    });
+
+    it('should allow forbidden-looking tokens inside escaped string literals', () => {
+      expect(() => validateSql("SELECT * FROM rosout WHERE message = 'DROP TABLE x'")).not.toThrow();
+      expect(() => validateSql("SELECT * FROM rosout WHERE message = 'CREATE ''nested'' quote'")).not.toThrow();
+    });
+
+    it('should reject forbidden keywords outside string literals even with strings present', () => {
+      expect(() => validateSql("SELECT * FROM rosout WHERE message = 'ok'; DELETE FROM rosout")).toThrow(
+        'Multiple statements',
+      );
+    });
+
+    it('should reject forbidden keywords adjacent to string literals', () => {
+      expect(() => validateSql("SELECT * FROM rosout WHERE message = 'ok' OR severity = 'WARN' UNION SELECT * FROM diagnostics")).not.toThrow();
+      expect(() => validateSql("SELECT * FROM rosout; INSERT INTO rosout VALUES (1)")).toThrow(SqlValidationError);
+    });
+  });
 });

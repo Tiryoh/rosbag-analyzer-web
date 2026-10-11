@@ -135,6 +135,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'sql.rowCount': 'Rows',
     'sql.limited': 'limited',
     'sql.noResults': 'Query returned no results',
+    'sql.licenses': 'Third-party licenses (sql.js / SQLite wasm)',
   },
   ja: {
     // Header
@@ -268,6 +269,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'sql.rowCount': '行数',
     'sql.limited': '制限あり',
     'sql.noResults': 'クエリ結果が見つかりませんでした',
+    'sql.licenses': 'サードパーティライセンス（sql.js / SQLite wasm）',
   },
 };
 

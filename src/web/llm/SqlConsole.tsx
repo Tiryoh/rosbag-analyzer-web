@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import initSqlJs from 'sql.js';
 import type { RosoutMessage, DiagnosticStatusEntry } from '../../core/types';
 import { loadDataIntoDb } from './loadSqlData';
 import { validateSql, SqlValidationError } from './sqlValidator';
+import { initSqlEngine, SQL_THIRD_PARTY_LICENSES_URL } from './sqlEngine';
+import type { SqlJsModule } from './sqlEngine';
 import { Play } from 'lucide-react';
 
-type Database = InstanceType<Awaited<ReturnType<typeof initSqlJs>>['Database']>;
+type Database = InstanceType<SqlJsModule['Database']>;
 
 interface SqlConsoleProps {
   messages: RosoutMessage[];
@@ -60,10 +61,7 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
         setLoading(true);
         setError('');
 
-        // Initialize SQL.js with wasm file from CDN
-        const SQL = await initSqlJs({
-          locateFile: (file) => `https://sql.js.org/dist/${file}`,
-        });
+        const SQL = await initSqlEngine();
 
         if (!mounted) return;
 
@@ -158,6 +156,16 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
       <div>
         <h2 className="text-lg font-semibold mb-2">{t('sql.title')}</h2>
         <p className="text-sm text-gray-600 mb-2">{t('sql.description')}</p>
+        <p className="text-xs text-gray-500">
+          <a
+            href={SQL_THIRD_PARTY_LICENSES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-gray-700"
+          >
+            {t('sql.licenses')}
+          </a>
+        </p>
       </div>
 
       <details className="text-sm">

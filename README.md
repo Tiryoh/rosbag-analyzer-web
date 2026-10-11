@@ -84,6 +84,20 @@ The built files will be in `dist/` folder. You can serve them with any static we
 - **fzstd** - Zstandard decompression for `.mcap.zstd` files
 - **Tailwind CSS** - Utility-first styling
 - **Lucide Icons** - Beautiful icon set
+- **sql.js** (optional) - In-browser SQLite for the opt-in SQL console when `VITE_ENABLE_LLM=1` is set at build time (see [Third-party licenses](#-third-party-licenses))
+
+## 📜 Third-party licenses
+
+The main app is MIT-licensed ([LICENSE](LICENSE)). The hosted web build on Cloudflare Pages
+is produced with `VITE_ENABLE_LLM=1`, which bundles additional third-party components for the
+SQL console:
+
+- **[sql.js](https://github.com/sql-js/sql.js)** (MIT) — JavaScript SQLite bindings; loads a bundled `sql-wasm.wasm` asset (no CDN fetch).
+- **SQLite** (public domain) — embedded inside the sql.js WebAssembly binary ([SQLite copyright](https://www.sqlite.org/copyright.html)).
+
+Full license text for bundled components: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+That file is also emitted as a static asset next to the wasm when the SQL console chunk is built.
+Release zip downloads from GitHub are built **without** `VITE_ENABLE_LLM` and do not ship sql.js, wasm, or the SQL console.
 
 ## 🔗 Related Projects
 

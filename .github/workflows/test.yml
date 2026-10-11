@@ -111,6 +111,15 @@ jobs:
             echo "ERROR: Found SQLite/SQL engine references in standard build (VITE_ENABLE_LLM should be off by default)"
             exit 1
           fi
+          if grep -r 'sql\.js\.org' dist/ 2>/dev/null; then
+            echo "ERROR: Found sql.js CDN references in standard build"
+            exit 1
+          fi
+          if find dist -name '*.wasm' -print -quit | grep -q .; then
+            echo "ERROR: Found .wasm assets in standard build"
+            find dist -name '*.wasm'
+            exit 1
+          fi
           echo "✓ No SQLite/SQL engine code found in standard build"
 
       - name: Verify standard build excludes OpenAI references
@@ -119,6 +128,10 @@ jobs:
           echo "Checking for api.openai.com in dist/..."
           if grep -r 'api\.openai\.com' dist/ 2>/dev/null; then
             echo "ERROR: Found api.openai.com references in standard build"
+            exit 1
+          fi
+          if [ -f dist/THIRD_PARTY_LICENSES.md ]; then
+            echo "ERROR: THIRD_PARTY_LICENSES.md present without LLM flag"
             exit 1
           fi
           echo "✓ No OpenAI API references found in standard build"
@@ -135,6 +148,15 @@ jobs:
             echo "ERROR: Found SQLite/SQL engine references in singlefile build (VITE_ENABLE_LLM should be off by default)"
             exit 1
           fi
+          if grep -r 'sql\.js\.org' dist-singlefile/ 2>/dev/null; then
+            echo "ERROR: Found sql.js CDN references in singlefile build"
+            exit 1
+          fi
+          if find dist-singlefile -name '*.wasm' -print -quit | grep -q .; then
+            echo "ERROR: Found .wasm assets in singlefile build"
+            find dist-singlefile -name '*.wasm'
+            exit 1
+          fi
           echo "✓ No SQLite/SQL engine code found in singlefile build"
 
       - name: Verify singlefile build excludes OpenAI references
@@ -143,6 +165,10 @@ jobs:
           echo "Checking for api.openai.com in dist-singlefile/..."
           if grep -r 'api\.openai\.com' dist-singlefile/ 2>/dev/null; then
             echo "ERROR: Found api.openai.com references in singlefile build"
+            exit 1
+          fi
+          if [ -f dist-singlefile/THIRD_PARTY_LICENSES.md ]; then
+            echo "ERROR: THIRD_PARTY_LICENSES.md present in singlefile build without LLM flag"
             exit 1
           fi
           echo "✓ No OpenAI API references found in singlefile build"
@@ -159,6 +185,19 @@ jobs:
           echo "Checking that SQLite/SQL engine code IS present in LLM-enabled build..."
           if ! grep -r -i -E 'sqlite|sql\.js' dist/ 2>/dev/null; then
             echo "ERROR: SQLite/SQL engine code NOT found in LLM-enabled build (expected to be present)"
+            exit 1
+          fi
+          if ! find dist -name '*.wasm' -print -quit | grep -q .; then
+            echo "ERROR: No bundled sql-wasm.wasm asset in LLM-enabled build"
+            exit 1
+          fi
+          if [ ! -f dist/THIRD_PARTY_LICENSES.md ]; then
+            echo "ERROR: dist/THIRD_PARTY_LICENSES.md missing from LLM-enabled build"
+            find dist -type f
+            exit 1
+          fi
+          if grep -r 'sql\.js\.org' dist/ 2>/dev/null; then
+            echo "ERROR: LLM build still references sql.js CDN"
             exit 1
           fi
           echo "✓ SQL engine code found in LLM-enabled build as expected"
