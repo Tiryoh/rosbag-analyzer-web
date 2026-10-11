@@ -551,7 +551,19 @@ function App() {
         {/* Loading */}
         {loading && (
           <div className="mb-8">
-            <div className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden">
+            <div
+              className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden"
+              role="progressbar"
+              aria-label={progress != null ? t(`progress.phase.${progress.phase}`) : t('loading.message')}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={
+                progress?.processed != null && progress?.total != null && progress.total > 0
+                  ? Math.round((progress.processed / progress.total) * 100)
+                  : undefined
+              }
+              data-testid="load-progress"
+            >
               {progress?.processed != null && progress?.total != null && progress.total > 0 ? (
                 <div
                   className="progress-bar h-full w-full bg-gradient-to-r from-brand-400 to-brand-600"
@@ -752,11 +764,11 @@ function App() {
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.or')}</span>
                   </label>
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.and')}</span>
                   </label>
                 </div>
@@ -822,7 +834,7 @@ function App() {
                 <div className="max-h-32 overflow-y-auto border border-surface-200 dark:border-surface-700 rounded-lg p-2 bg-surface-50 dark:bg-surface-800/50">
                   {Array.from(uniqueNodes).sort().filter(node => !nodeSearch || node.toLowerCase().includes(nodeSearch.toLowerCase())).map(node => (
                     <label key={node} className="flex items-center py-1 cursor-pointer">
-                      <input type="checkbox" checked={selectedNodes.has(node)} onChange={() => toggleNode(node)} className="mr-2 accent-brand-600" />
+                      <input type="checkbox" checked={selectedNodes.has(node)} onChange={() => toggleNode(node)} className="input-check mr-2" />
                       <span className="text-xs text-surface-700 dark:text-surface-300 font-mono">{node}</span>
                     </label>
                   ))}
@@ -837,11 +849,11 @@ function App() {
                   </label>
                   <div className="flex gap-3">
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={!useRegex} onChange={() => setUseRegex(false)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={!useRegex} onChange={() => setUseRegex(false)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.keywords')}</span>
                     </label>
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={useRegex} onChange={() => setUseRegex(true)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={useRegex} onChange={() => setUseRegex(true)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.regex')}</span>
                     </label>
                   </div>
@@ -999,7 +1011,7 @@ function App() {
                       type="checkbox"
                       checked={exportIgnoresTimeFilter}
                       onChange={e => setExportIgnoresTimeFilter(e.target.checked)}
-                      className="accent-brand-600"
+                      className="input-check"
                     />
                     <span className="text-xs text-surface-500 dark:text-surface-400 underline decoration-dotted decoration-surface-400">{t('export.ignoreTimeFilter')}</span>
                   </label>
@@ -1093,11 +1105,11 @@ function App() {
                 <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2">{t('filter.mode')}</label>
                 <div className="flex gap-4">
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={diagFilterMode === 'OR'} onChange={() => setDiagFilterMode('OR')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={diagFilterMode === 'OR'} onChange={() => setDiagFilterMode('OR')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.or')}</span>
                   </label>
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={diagFilterMode === 'AND'} onChange={() => setDiagFilterMode('AND')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={diagFilterMode === 'AND'} onChange={() => setDiagFilterMode('AND')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.and')}</span>
                   </label>
                 </div>
@@ -1145,7 +1157,7 @@ function App() {
                 <div className="max-h-32 overflow-y-auto border border-surface-200 dark:border-surface-700 rounded-lg p-2 bg-surface-50 dark:bg-surface-800/50">
                   {Array.from(uniqueDiagNames).sort().filter(name => !diagNameSearch || name.toLowerCase().includes(diagNameSearch.toLowerCase())).map(name => (
                     <label key={name} className="flex items-center py-1 cursor-pointer">
-                      <input type="checkbox" checked={diagSelectedNames.has(name)} onChange={() => toggleDiagName(name)} className="mr-2 accent-brand-600" />
+                      <input type="checkbox" checked={diagSelectedNames.has(name)} onChange={() => toggleDiagName(name)} className="input-check mr-2" />
                       <span className="text-xs text-surface-700 dark:text-surface-300 font-mono">{name}</span>
                     </label>
                   ))}
@@ -1160,11 +1172,11 @@ function App() {
                   </label>
                   <div className="flex gap-3">
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={!diagUseRegex} onChange={() => setDiagUseRegex(false)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={!diagUseRegex} onChange={() => setDiagUseRegex(false)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.keywords')}</span>
                     </label>
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={diagUseRegex} onChange={() => setDiagUseRegex(true)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={diagUseRegex} onChange={() => setDiagUseRegex(true)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.regex')}</span>
                     </label>
                   </div>
@@ -1275,7 +1287,7 @@ function App() {
                       type="checkbox"
                       checked={exportIgnoresTimeFilter}
                       onChange={e => setExportIgnoresTimeFilter(e.target.checked)}
-                      className="accent-brand-600"
+                      className="input-check"
                     />
                     <span className="text-xs text-surface-500 dark:text-surface-400 underline decoration-dotted decoration-surface-400">{t('export.ignoreTimeFilter')}</span>
                   </label>

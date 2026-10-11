@@ -22,9 +22,9 @@ UI のモーション・フォーカス・サーフェスに関する規律を�
 ## Decision Details
 
 1. **トランジションは対象プロパティを明示する。** `transition-all` は禁止。原則 `transition-colors`(color / background-color / border-color 系)のみ。box-shadow はトランジション対象に含めない。
-2. **イージングは named easing のみ。** ブラウザ既定の `ease` は使わない。`:root` の `--ease-out`(exponential ease-out 系)/ `--ease-in-out` トークンを参照する。
+2. **イージングは named easing のみ。** ブラウザ既定の `ease` は使わない。`:root` の `--ease-out`(exponential ease-out 系)/ `--ease-in-out` トークンを参照する。Tailwind の `transition-*` ユーティリティは `tailwind.config.js` の `transitionTimingFunction.DEFAULT` を `var(--ease-out)` にして、個別指定なしでもトークンを通るようにする。
 3. **フォーカスリングは `focus-visible` で即時表示する。** リングの出現をアニメーションさせない(規律 1 の box-shadow 除外がこれを保証する)。
-4. **全インタラクティブ要素に focus-visible リングを付与する。** ホバースタイルのみの要素を作らない。共有クラス(`.btn-primary` / `.btn-secondary` / `.btn-link` / `.btn-chip` / `.input-field`)を使えば自動的に満たされる。新しいボタン・入力はまず共有クラスを使い、足りない場合のみ拡張する。
+4. **全インタラクティブ要素に focus-visible リングを付与する。** ホバースタイルのみの要素を作らない。共有クラス(`.btn-primary` / `.btn-secondary` / `.btn-link` / `.btn-chip` / `.input-field` / ラジオ・チェックボックス用の `.input-check`)を使えば自動的に満たされる。新しいボタン・入力はまず共有クラスを使い、足りない場合のみ拡張する。
 5. **入場アニメーションは初回ページロード時の 1 回に限定する。** `animate-fade-in` + `stagger-*` は常時レンダリングされる要素(ヘッダー、アップロードゾーン)にのみ付与する。条件レンダリングされるセクションには付けない(状態変化のたびに再アニメーションするため)。
 6. **`prefers-reduced-motion: reduce` では移動を伴うモーションを 150ms 以下の opacity フェードに縮退する。** index.css のメディアクエリで一括対応する。
 7. **サーフェスは不透明の実色を使う。** ぼかすべき背景コンテンツが存在しないため `backdrop-blur` は使わない。カードは `.card`(`bg-white dark:bg-surface-900` + border)を使う。
@@ -48,4 +48,5 @@ UI のモーション・フォーカス・サーフェスに関する規律を�
 - `backdrop-blur` が存在しないこと
 - `animate-fade-in` の付与先が常時レンダリング要素(ヘッダー、アップロードゾーン)のみであること
 - `index.css` に `prefers-reduced-motion: reduce` ブロックが存在すること
-- 新規ボタン・入力が共有クラス(`.btn-*` / `.input-field`)経由で focus-visible リングを持つことをレビューで確認する
+- 新規ボタン・入力が共有クラス(`.btn-*` / `.input-field` / `.input-check`)経由で focus-visible リングを持つことをレビューで確認する
+- `e2e/ui-discipline.spec.ts` で、入場アニメーションの付与先、reduced-motion 時の上書き、代表的な共有クラスのフォーカスリングが即時に出ることを検証する

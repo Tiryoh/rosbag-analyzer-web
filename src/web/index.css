@@ -55,6 +55,10 @@ body {
     @apply w-full border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 font-mono transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:border-brand-500;
   }
 
+  .input-check {
+    @apply accent-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-900;
+  }
+
   .card {
     @apply bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl;
   }
