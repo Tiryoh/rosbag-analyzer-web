@@ -5,53 +5,42 @@
 
 ## Context
 
-ROS1/ROS2 の録画ファイルは、録画中にプロセスがクラッシュしたり強制終了されると、不完全な状態で保存されることがある。
+ROS の録画中にプロセスが強制終了すると、ファイル末尾が不完全になることがある。
+ROS1 bag ではインデックスが書き込まれず、`@foxglove/rosbag` で読めないため、従来は `rosbag reindex` による事前修復が必要だった。
+ROS2 MCAP は、既存のストリーミング読み取りへのフォールバックで対処する。
 
-- ROS1 bag: インデックスが書き込まれず `@foxglove/rosbag` で読めない。従来は CLI (`rosbag reindex`) での事前処理が必要だった
-- ROS2 MCAP: ファイル末尾が切り詰められる。`@mcap/core` の indexed reader では読めないが、streaming reader でフォールバック可能（ADR-0006 参照）
-
-本ツールは offline-first のブラウザアプリであり、サーバーサイド処理やユーザーに CLI 操作を求めることは設計方針に反する。ROS2 MCAP の破損ファイルは streaming フォールバックで対処済みだが、ROS1 bag にはそのような仕組みがなく、バイナリレベルの reindex が必要だった。
+本ツールは offline-first のブラウザアプリであり、外部 CLI やサーバーサイドでの処理を前提にできない。
+ROS1 bag もブラウザ上でインデックスを再構築する必要がある。
 
 ## Decision
 
-ROS1 の未インデックス bag を検出した場合、ブラウザ上でバイナリレベルの reindex を実行し、再構築した bag を `@foxglove/rosbag` で読み直す。ROS2 MCAP は既存の indexed→streaming フォールバックで対処する。
+ROS1 の未インデックス bag を検出した場合、ブラウザ上でバイナリレベルの reindex を実行し、再構築したデータを `@foxglove/rosbag` で読み直す。
 
 ## Decision Details
 
-- bag header の `indexPosition === 0 && connectionCount === 0 && chunkCount === 0` で未インデックスを判定
-- `reindexUtils.ts` がチャンクを走査し、`IndexData`・`Connection`・`ChunkInfo` レコードをバイナリレベルで再構築
-- reindex 後の bag を `Blob` として保持し、ユーザーがダウンロードできるようにする（次回以降の高速読み込み用）
-- reindex モジュールは dynamic import で遅延読み込みし、通常の bag 読み込みパスのバンドルサイズに影響しない
-- reindex 完了後、元の `ArrayBuffer` / `BlobReader` / `Bag` を null にしてメモリを解放
+- bag ヘッダの `indexPosition === 0 && connectionCount === 0 && chunkCount === 0` により未インデックス状態を判定する。
+- `reindexUtils.ts` がチャンクを走査し、`IndexData`、`Connection`、`ChunkInfo` レコードをバイナリレベルで再構築する。
+- reindex 処理モジュールは動的 import（`import()`）により遅延ロードし、通常の読み込み経路のバンドルサイズに影響を与えないようにする。
+- reindex 完了後は不要となったバッファ参照を解放し、メモリ消費を抑制する。
+- 再構築後の bag はダウンロード可能とし、次回以降の読み込みを高速化できるようにする。
 
 ## Alternatives Considered
 
-### ユーザーに `rosbag reindex` CLI の実行を求める
-
-不採用。offline-first のブラウザアプリとして、外部ツールへの依存を避ける。ROS 環境がないユーザーも想定する。
-
-### サーバーサイドで reindex する
-
-不採用。バックエンドを持たない設計方針に反する。ユーザーの bag ファイルをサーバーに送信するのはプライバシー上も望ましくない。
-
-### ROS2 MCAP と同様の streaming フォールバックを ROS1 bag にも実装する
-
-不採用。ROS1 bag format は MCAP と異なり、チャンク内のレコードを読むにはチャンク位置を知る必要がある。streaming reader に相当する仕組みを一から実装するよりも、インデックスを再構築して既存の `@foxglove/rosbag` に渡すほうが信頼性が高い。
-
-### Web Worker で reindex する
-
-将来的に検討の余地あり。現状はメインスレッドで同期的に実行しているが、大きな bag では UI がブロックされる。
+- `rosbag reindex` の事前実行：ROS 環境のない利用者にも対応するため不採用。
+- サーバー側での処理：バックエンドを持たない方針と、ログデータのプライバシーを守るため不採用。
+- ストリーミング読み取りの独自実装：新規パーサーの保守を避け、再構築したインデックスを既存ライブラリに渡す方式を選ぶ。
+- Web Worker：将来の検討対象とする。
+  現状はメインスレッドで実行するため、大容量ファイルでは UI が一時停止する。
 
 ## Consequences
 
-- ユーザーは未インデックス bag をドラッグ&ドロップするだけで解析できる
-- reindex 結果をダウンロードすれば次回以降の読み込みが高速になる
-- 大きな bag ファイルではメモリ消費が増加する（元データ + reindex 結果の両方が一時的にメモリ上に存在）
-- ROS1 bag format のバイナリ仕様に依存するコードが増える
+- ユーザーは未インデックスの ROS1 bag をドラッグ＆ドロップするだけで解析できる。
+- 再構築中は元データと生成データを保持するため、メモリ消費が増える。
+- ROS1 bag のバイナリ仕様に依存するコードの保守が必要となる。
 
 ## Verification / Guardrails
 
-- `reindexBagFromBuffer` の直接ユニットテストで正常系・異常系を検証
-- reindex 結果を `@foxglove/rosbag` で開き直す roundtrip テスト
-- E2E テストで未インデックス bag の読み込み・reindex 通知・ダウンロードを検証
-- 通常のインデックス付き bag で reindex が発動しないことを E2E テストで検証
+1. `reindexBagFromBuffer` の正常系と各種破損パターンを単体テストで検証する。
+2. 再構築した bag を `@foxglove/rosbag` で開くラウンドトリップテストを行う。
+3. 未インデックス bag の読み込み、reindex 通知、ダウンロードを E2E テストで検証する。
+4. 正常なインデックス付き bag で reindex 処理が発動しないことを検証する。
