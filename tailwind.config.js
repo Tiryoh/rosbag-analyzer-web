@@ -11,6 +11,11 @@ export default {
         sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
       },
+      // Route every `transition-*` utility through the named easing token
+      // declared in src/web/index.css (ADR 0012).
+      transitionTimingFunction: {
+        DEFAULT: 'var(--ease-out)',
+      },
       colors: {
         brand: {
           50:  '#ecfeff',

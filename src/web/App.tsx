@@ -463,14 +463,14 @@ function App() {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
 
         {/* Header */}
-        <header className="mb-10 text-center animate-fade-in">
+        <header className="mb-10 animate-fade-in">
           <div className="flex justify-end mb-2">
             <div className="flex gap-0.5 p-0.5 bg-surface-200/60 dark:bg-surface-800/60 rounded-md">
               <button
                 onClick={() => setLang('ja')}
-                className={`px-2 py-0.5 text-xs font-medium rounded transition-all ${
+                className={`btn-chip px-2 py-0.5 text-xs font-medium rounded ${
                   lang === 'ja'
-                    ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
+                    ? 'bg-surface-50 dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
                     : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-300'
                 }`}
               >
@@ -478,9 +478,9 @@ function App() {
               </button>
               <button
                 onClick={() => setLang('en')}
-                className={`px-2 py-0.5 text-xs font-medium rounded transition-all ${
+                className={`btn-chip px-2 py-0.5 text-xs font-medium rounded ${
                   lang === 'en'
-                    ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
+                    ? 'bg-surface-50 dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
                     : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-300'
                 }`}
               >
@@ -488,23 +488,25 @@ function App() {
               </button>
             </div>
           </div>
-          <img src={logoUrl} alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
-          <h1 className="sr-only">ROSbag Analyzer</h1>
-          <p className="text-surface-600 dark:text-surface-300 text-sm mx-auto leading-relaxed">
-            {t('header.description')}
-          </p>
-          <p className="mt-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400 tracking-wide">
-            {t('header.privacy')}
-          </p>
+          <div className="text-center">
+            <img src={logoUrl} alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
+            <h1 className="sr-only">ROSbag Analyzer</h1>
+            <p className="text-surface-600 dark:text-surface-300 text-sm mx-auto leading-relaxed">
+              {t('header.description')}
+            </p>
+            <p className="mt-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400 tracking-wide">
+              {t('header.privacy')}
+            </p>
+          </div>
         </header>
 
         {/* File Upload */}
-        <div className="animate-fade-in stagger-1 mb-8">
+        <div className="animate-fade-in stagger-1 mb-10">
           <div
             className={`drop-zone flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl ${
               isDragging
                 ? 'border-brand-500 bg-brand-50/50 dark:bg-brand-950/20'
-                : 'border-surface-300 dark:border-surface-700 bg-white/60 dark:bg-surface-900/60 backdrop-blur-sm'
+                : 'border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-900'
             }`}
             onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
@@ -527,7 +529,7 @@ function App() {
                 type="button"
                 onClick={openFilePicker}
                 disabled={loading}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand-600 text-white shadow-sm transition-colors hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-900 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary px-4 py-2 text-sm font-semibold rounded-lg"
               >
                 {t('upload.click')}
               </button>
@@ -548,12 +550,24 @@ function App() {
 
         {/* Loading */}
         {loading && (
-          <div className="mb-8 animate-fade-in">
-            <div className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden">
+          <div className="mb-8">
+            <div
+              className="h-1.5 w-full bg-surface-200 dark:bg-surface-800 rounded-full overflow-hidden"
+              role="progressbar"
+              aria-label={progress != null ? t(`progress.phase.${progress.phase}`) : t('loading.message')}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={
+                progress?.processed != null && progress?.total != null && progress.total > 0
+                  ? Math.round((progress.processed / progress.total) * 100)
+                  : undefined
+              }
+              data-testid="load-progress"
+            >
               {progress?.processed != null && progress?.total != null && progress.total > 0 ? (
                 <div
-                  className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full"
-                  style={{ width: `${(progress.processed / progress.total) * 100}%`, transition: 'width 0.3s ease' }}
+                  className="progress-bar h-full w-full bg-gradient-to-r from-brand-400 to-brand-600"
+                  style={{ transform: `scaleX(${progress.processed / progress.total})` }}
                 />
               ) : (
                 <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full loading-bar" />
@@ -577,7 +591,7 @@ function App() {
 
         {/* Error */}
         {error && (
-          <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 rounded-xl animate-fade-in" data-testid="error-panel">
+          <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 rounded-xl" data-testid="error-panel">
             <p className="text-red-700 dark:text-red-400 font-semibold text-sm mb-1">{t('error.title')}</p>
             <pre className="text-xs text-red-600 dark:text-red-300 whitespace-pre-wrap overflow-x-auto font-mono">{error}</pre>
             {reindexBlockers && reindexBlockers.length > 0 && (
@@ -603,7 +617,7 @@ function App() {
 
         {/* Success */}
         {loadCompleted && !loading && hasData && (
-          <div className="mb-8 text-center animate-fade-in">
+          <div className="mb-8">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-2 rounded-full">
               {hasDiagnostics
                 ? tf('status.loadedRosoutDiagnostics', {
@@ -621,7 +635,7 @@ function App() {
 
         {/* Loaded but empty */}
         {loadCompleted && !loading && !hasData && (
-          <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl animate-fade-in" data-testid="empty-result-panel">
+          <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl" data-testid="empty-result-panel">
             <p className="text-sm text-amber-800 dark:text-amber-300 mb-2">
               {tf('status.loadedNoMessages', { fileName: uploadedFileName })}
             </p>
@@ -648,7 +662,7 @@ function App() {
         {/* Reindexed notification */}
         {reindexedBytes && hasData && !loading && (
           <div
-            className={`mb-8 p-4 border rounded-xl animate-fade-in ${
+            className={`mb-8 p-4 border rounded-xl ${
               reindexMeta?.partial
                 ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50'
                 : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50'
@@ -688,7 +702,7 @@ function App() {
               type="button"
               onClick={() => downloadBytes(reindexedBytes, uploadedFileName || 'reindexed.bag')}
               data-testid="download-reindexed"
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+              className={`btn-chip inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border ${
                 reindexMeta?.partial
                   ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-white/60 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40'
                   : 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-white/60 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
@@ -702,13 +716,13 @@ function App() {
 
         {/* Tabs */}
         {hasDiagnostics && hasData && (
-          <div className="flex gap-1 mb-6 p-1 bg-surface-200/60 dark:bg-surface-800/60 rounded-lg w-fit mx-auto animate-fade-in">
+          <div className="flex gap-1 mb-6 p-1 bg-surface-200/60 dark:bg-surface-800/60 rounded-lg w-fit">
             <button
               onClick={() => setActiveTab('rosout')}
               data-testid="rosout-tab"
-              className={`px-5 py-2 text-sm font-medium rounded-md transition-all ${
+              className={`btn-chip px-5 py-2 text-sm font-medium rounded-md ${
                 activeTab === 'rosout'
-                  ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
+                  ? 'bg-surface-50 dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
                   : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-300'
               }`}
             >
@@ -720,9 +734,9 @@ function App() {
             <button
               onClick={() => setActiveTab('diagnostics')}
               data-testid="diagnostics-tab"
-              className={`px-5 py-2 text-sm font-medium rounded-md transition-all ${
+              className={`btn-chip px-5 py-2 text-sm font-medium rounded-md ${
                 activeTab === 'diagnostics'
-                  ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
+                  ? 'bg-surface-50 dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
                   : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-300'
               }`}
             >
@@ -736,7 +750,7 @@ function App() {
 
         {/* Filters (rosout tab only) */}
         {activeTab === 'rosout' && messages.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl p-6 mb-6 animate-fade-in stagger-2">
+          <div className="card p-6 mb-4">
             <div className="flex items-center mb-5">
               <Filter className="w-4 h-4 mr-2 text-brand-600 dark:text-brand-400" />
               <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-100">{t('filter.title')}</h2>
@@ -745,16 +759,16 @@ function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Filter Mode */}
               <div className="text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">
+                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2">
                   {t('filter.mode')}
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.or')}</span>
                   </label>
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.and')}</span>
                   </label>
                 </div>
@@ -762,7 +776,7 @@ function App() {
 
               {/* Severity Levels */}
               <div className="text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">
+                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2">
                   {t('filter.severity')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -770,7 +784,7 @@ function App() {
                     <button
                       key={level}
                       onClick={() => toggleSeverity(level)}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                      className={`btn-chip px-3 py-1 rounded-md text-xs font-medium ${
                         selectedSeverities.has(level)
                           ? 'bg-brand-600 text-white shadow-sm'
                           : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'
@@ -785,25 +799,25 @@ function App() {
               {/* Nodes */}
               <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400">
                     {t('filter.nodes')} ({uniqueNodes.size})
                   </label>
                   <div className="flex gap-2">
                     {nodeSearch ? (
                       <>
-                        <button onClick={() => { const filtered = Array.from(uniqueNodes).filter(n => n.toLowerCase().includes(nodeSearch.toLowerCase())); setSelectedNodes(new Set([...selectedNodes, ...filtered])); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                        <button onClick={() => { const filtered = Array.from(uniqueNodes).filter(n => n.toLowerCase().includes(nodeSearch.toLowerCase())); setSelectedNodes(new Set([...selectedNodes, ...filtered])); }} className="btn-link text-xs">
                           {t('filter.selectFiltered')}
                         </button>
-                        <button onClick={() => { const filtered = new Set(Array.from(uniqueNodes).filter(n => n.toLowerCase().includes(nodeSearch.toLowerCase()))); const next = new Set([...selectedNodes].filter(n => !filtered.has(n))); setSelectedNodes(next); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                        <button onClick={() => { const filtered = new Set(Array.from(uniqueNodes).filter(n => n.toLowerCase().includes(nodeSearch.toLowerCase()))); const next = new Set([...selectedNodes].filter(n => !filtered.has(n))); setSelectedNodes(next); }} className="btn-link text-xs">
                           {t('filter.deselectFiltered')}
                         </button>
                       </>
                     ) : (
                       <>
-                        <button onClick={() => setSelectedNodes(new Set(uniqueNodes))} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                        <button onClick={() => setSelectedNodes(new Set(uniqueNodes))} className="btn-link text-xs">
                           {t('filter.selectAll')}
                         </button>
-                        <button onClick={() => setSelectedNodes(new Set())} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                        <button onClick={() => setSelectedNodes(new Set())} className="btn-link text-xs">
                           {t('filter.clear')}
                         </button>
                       </>
@@ -815,12 +829,12 @@ function App() {
                   value={nodeSearch}
                   onChange={e => setNodeSearch(e.target.value)}
                   placeholder={t('filter.searchPlaceholder')}
-                  className="w-full px-3 py-1.5 mb-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                  className="input-field px-3 py-1.5 mb-1.5 text-xs"
                 />
                 <div className="max-h-32 overflow-y-auto border border-surface-200 dark:border-surface-700 rounded-lg p-2 bg-surface-50 dark:bg-surface-800/50">
                   {Array.from(uniqueNodes).sort().filter(node => !nodeSearch || node.toLowerCase().includes(nodeSearch.toLowerCase())).map(node => (
                     <label key={node} className="flex items-center py-1 cursor-pointer">
-                      <input type="checkbox" checked={selectedNodes.has(node)} onChange={() => toggleNode(node)} className="mr-2 accent-brand-600" />
+                      <input type="checkbox" checked={selectedNodes.has(node)} onChange={() => toggleNode(node)} className="input-check mr-2" />
                       <span className="text-xs text-surface-700 dark:text-surface-300 font-mono">{node}</span>
                     </label>
                   ))}
@@ -830,16 +844,16 @@ function App() {
               {/* Message Search: type toggle + input */}
               <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400">
                     {t('filter.messageType')}
                   </label>
                   <div className="flex gap-3">
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={!useRegex} onChange={() => setUseRegex(false)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={!useRegex} onChange={() => setUseRegex(false)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.keywords')}</span>
                     </label>
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={useRegex} onChange={() => setUseRegex(true)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={useRegex} onChange={() => setUseRegex(true)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.regex')}</span>
                     </label>
                   </div>
@@ -849,16 +863,16 @@ function App() {
                   value={useRegex ? regexPattern : keywords}
                   onChange={e => (useRegex ? setRegexPattern(e.target.value) : setKeywords(e.target.value))}
                   placeholder={useRegex ? t('filter.regexPlaceholder') : t('filter.keywordsPlaceholder')}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                  className="input-field px-3 py-2 text-sm"
                 />
               </div>
 
               {/* Time Range */}
               <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400">
                     {t('filter.timeRange')}
-                    <span className="ml-1.5 normal-case tracking-normal font-normal text-surface-400 font-mono">
+                    <span className="ml-1.5 font-normal text-surface-400 font-mono">
                       ({timezone === 'utc' ? 'UTC' : t('table.timezone.local')})
                     </span>
                   </label>
@@ -866,14 +880,14 @@ function App() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setTimeStart(epochToDatetimeLocal(Math.floor(messageTimeRange.min))); setTimeEnd(epochToDatetimeLocal(Math.ceil(messageTimeRange.max))); }}
-                        className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                        className="btn-link text-xs"
                       >
                         {t('filter.timeSetRange')}
                       </button>
                       {(timeStart || timeEnd) && (
                         <button
                           onClick={() => { setTimeStart(''); setTimeEnd(''); }}
-                          className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                          className="btn-link text-xs"
                         >
                           {t('filter.clear')}
                         </button>
@@ -892,7 +906,7 @@ function App() {
                       min={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.min) : undefined}
                       max={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.max) : undefined}
                       placeholder={messageTimeRange ? formatTime(messageTimeRange.min) : undefined}
-                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                      className="input-field px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
@@ -905,7 +919,7 @@ function App() {
                       min={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.min) : undefined}
                       max={messageTimeRange ? epochToDatetimeLocal(messageTimeRange.max) : undefined}
                       placeholder={messageTimeRange ? formatTime(messageTimeRange.max) : undefined}
-                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                      className="input-field px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
@@ -921,18 +935,18 @@ function App() {
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
-              <button onClick={applyFilters} className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium transition-colors shadow-sm">
+              <button onClick={applyFilters} className="btn-primary px-5 py-2 text-sm rounded-lg font-medium">
                 {t('filter.apply')}
               </button>
               <button
                 onClick={() => { setSelectedNodes(new Set()); setSelectedSeverities(new Set()); setKeywords(''); setRegexPattern(''); setTimeStart(''); setTimeEnd(''); setFilteredMessages(messages); }}
-                className="px-5 py-2 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-sm rounded-lg font-medium transition-colors"
+                className="btn-secondary px-5 py-2 text-sm rounded-lg font-medium"
               >
                 {t('filter.clearAll')}
               </button>
               <button
                 onClick={() => setShowStats(!showStats)}
-                className="px-5 py-2 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
+                className="btn-secondary px-5 py-2 text-sm rounded-lg font-medium flex items-center gap-2"
               >
                 <BarChart3 className="w-3.5 h-3.5" />
                 {showStats ? t('stats.hide') : t('stats.show')}
@@ -943,11 +957,11 @@ function App() {
 
         {/* Statistics (rosout tab only) */}
         {activeTab === 'rosout' && showStats && filteredMessages.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl p-6 mb-6 animate-fade-in">
+          <div className="card p-6 mb-4">
             <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-100 mb-4">{t('stats.title')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-3 uppercase tracking-wider">{t('stats.bySeverity')}</h3>
+                <h3 className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-3">{t('stats.bySeverity')}</h3>
                 {Object.entries(stats.severityCount).map(([level, count]) => {
                   const percentage = ((count / filteredMessages.length) * 100).toFixed(1);
                   return (
@@ -955,7 +969,7 @@ function App() {
                       <span className={`text-sm font-medium ${SEVERITY_COLORS[level as SeverityLevel]}`}>{level}</span>
                       <div className="flex items-center gap-3">
                         <div className="w-24 h-1.5 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
-                          <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${percentage}%` }} />
+                          <div className="h-full bg-brand-500 rounded-full" style={{ width: `${percentage}%` }} />
                         </div>
                         <span className="text-xs text-surface-500 dark:text-surface-400 font-mono w-20 text-right">{count} ({percentage}%)</span>
                       </div>
@@ -964,7 +978,7 @@ function App() {
                 })}
               </div>
               <div>
-                <h3 className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-3 uppercase tracking-wider">{t('stats.topNodes')}</h3>
+                <h3 className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-3">{t('stats.topNodes')}</h3>
                 {stats.topNodes.map(([node, count]) => {
                   const percentage = ((count / filteredMessages.length) * 100).toFixed(1);
                   return (
@@ -981,7 +995,7 @@ function App() {
 
         {/* Export (rosout) */}
         {activeTab === 'rosout' && filteredMessages.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl p-5 mb-6 animate-fade-in stagger-3">
+          <div className="card p-5 mb-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <Download className="w-4 h-4 text-surface-400" />
@@ -997,19 +1011,19 @@ function App() {
                       type="checkbox"
                       checked={exportIgnoresTimeFilter}
                       onChange={e => setExportIgnoresTimeFilter(e.target.checked)}
-                      className="accent-brand-600"
+                      className="input-check"
                     />
                     <span className="text-xs text-surface-500 dark:text-surface-400 underline decoration-dotted decoration-surface-400">{t('export.ignoreTimeFilter')}</span>
                   </label>
                 )}
                 <div className="flex gap-2">
-                  <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
-                  <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
-                  <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
+                  <button onClick={() => handleExport('csv')} className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md">CSV</button>
+                  <button onClick={() => handleExport('json')} className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md">JSON</button>
+                  <button onClick={() => handleExport('txt')} className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md">TXT</button>
                   <button
                     onClick={() => handleExport('parquet')}
                     data-testid="export-rosout-parquet"
-                    className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
+                    className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md"
                   >
                     Parquet
                   </button>
@@ -1021,7 +1035,7 @@ function App() {
 
         {/* Messages Table (rosout) */}
         {activeTab === 'rosout' && filteredMessages.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden animate-fade-in stagger-4">
+          <div className="card overflow-hidden">
             <div className="px-5 py-3 border-b border-surface-200 dark:border-surface-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100">
                 {t('table.messages')} <span className="ml-2 text-xs font-mono text-surface-400">{filteredMessages.length.toLocaleString()}</span>
@@ -1030,10 +1044,10 @@ function App() {
                 <div className="flex items-center gap-1 bg-surface-100/60 dark:bg-surface-800/40 rounded-md p-0.5">
                   <span className="text-xs text-surface-400 px-1.5">{t('table.show')}</span>
                   {[100, 500, 1000, 5000, 10000].map(n => (
-                    <button key={n} onClick={() => setPreviewLimit(n)} className={`min-w-[2.5rem] px-1.5 py-0.5 text-xs font-mono rounded transition-colors text-center ${previewLimit === n ? 'bg-brand-600 text-white shadow-sm' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/40'}`}>{n.toLocaleString()}</button>
+                    <button key={n} onClick={() => setPreviewLimit(n)} className={`btn-chip min-w-[2.5rem] px-1.5 py-0.5 text-xs font-mono rounded text-center ${previewLimit === n ? 'bg-brand-600 text-white shadow-sm' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/40'}`}>{n.toLocaleString()}</button>
                   ))}
                 </div>
-                <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">
+                <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="btn-chip px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700">
                   {timezone === 'local' ? t('table.timezone.local') : t('table.timezone.utc')}
                 </button>
               </div>
@@ -1073,14 +1087,14 @@ function App() {
 
         {/* Empty state for rosout */}
         {activeTab === 'rosout' && messages.length > 0 && filteredMessages.length === 0 && (
-          <div className="text-center py-12 animate-fade-in">
+          <div className="text-center py-12">
             <p className="text-surface-400 dark:text-surface-500 text-sm">{t('empty.rosout')}</p>
           </div>
         )}
 
         {/* Diagnostics Filters */}
         {activeTab === 'diagnostics' && diagnostics.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl p-6 mb-6 animate-fade-in stagger-2">
+          <div className="card p-6 mb-4">
             <div className="flex items-center mb-5">
               <Filter className="w-4 h-4 mr-2 text-brand-600 dark:text-brand-400" />
               <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-100">{t('filter.title')}</h2>
@@ -1088,24 +1102,24 @@ function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">{t('filter.mode')}</label>
+                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2">{t('filter.mode')}</label>
                 <div className="flex gap-4">
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={diagFilterMode === 'OR'} onChange={() => setDiagFilterMode('OR')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={diagFilterMode === 'OR'} onChange={() => setDiagFilterMode('OR')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.or')}</span>
                   </label>
                   <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={diagFilterMode === 'AND'} onChange={() => setDiagFilterMode('AND')} className="mr-2 accent-brand-600" />
+                    <input type="radio" checked={diagFilterMode === 'AND'} onChange={() => setDiagFilterMode('AND')} className="input-check mr-2" />
                     <span className="text-sm text-surface-700 dark:text-surface-300">{t('filter.mode.and')}</span>
                   </label>
                 </div>
               </div>
 
               <div className="text-left">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2 uppercase tracking-wider">{t('filter.levels')}</label>
+                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-2">{t('filter.levels')}</label>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(DIAGNOSTIC_LEVEL_NAMES).map(([level, name]) => (
-                    <button key={level} onClick={() => toggleDiagLevel(Number(level))} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${diagSelectedLevels.has(Number(level)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'}`}>
+                    <button key={level} onClick={() => toggleDiagLevel(Number(level))} className={`btn-chip px-3 py-1 rounded-md text-xs font-medium ${diagSelectedLevels.has(Number(level)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'}`}>
                       {name}
                     </button>
                   ))}
@@ -1114,21 +1128,21 @@ function App() {
 
               <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">{t('filter.names')} ({uniqueDiagNames.size})</label>
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400">{t('filter.names')} ({uniqueDiagNames.size})</label>
                   <div className="flex gap-2">
                     {diagNameSearch ? (
                       <>
-                        <button onClick={() => { const filtered = Array.from(uniqueDiagNames).filter(n => n.toLowerCase().includes(diagNameSearch.toLowerCase())); setDiagSelectedNames(new Set([...diagSelectedNames, ...filtered])); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                        <button onClick={() => { const filtered = Array.from(uniqueDiagNames).filter(n => n.toLowerCase().includes(diagNameSearch.toLowerCase())); setDiagSelectedNames(new Set([...diagSelectedNames, ...filtered])); }} className="btn-link text-xs">
                           {t('filter.selectFiltered')}
                         </button>
-                        <button onClick={() => { const filtered = new Set(Array.from(uniqueDiagNames).filter(n => n.toLowerCase().includes(diagNameSearch.toLowerCase()))); const next = new Set([...diagSelectedNames].filter(n => !filtered.has(n))); setDiagSelectedNames(next); }} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">
+                        <button onClick={() => { const filtered = new Set(Array.from(uniqueDiagNames).filter(n => n.toLowerCase().includes(diagNameSearch.toLowerCase()))); const next = new Set([...diagSelectedNames].filter(n => !filtered.has(n))); setDiagSelectedNames(next); }} className="btn-link text-xs">
                           {t('filter.deselectFiltered')}
                         </button>
                       </>
                     ) : (
                       <>
-                        <button onClick={() => setDiagSelectedNames(new Set(uniqueDiagNames))} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">{t('filter.selectAll')}</button>
-                        <button onClick={() => setDiagSelectedNames(new Set())} className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300">{t('filter.clear')}</button>
+                        <button onClick={() => setDiagSelectedNames(new Set(uniqueDiagNames))} className="btn-link text-xs">{t('filter.selectAll')}</button>
+                        <button onClick={() => setDiagSelectedNames(new Set())} className="btn-link text-xs">{t('filter.clear')}</button>
                       </>
                     )}
                   </div>
@@ -1138,12 +1152,12 @@ function App() {
                   value={diagNameSearch}
                   onChange={e => setDiagNameSearch(e.target.value)}
                   placeholder={t('filter.searchPlaceholder')}
-                  className="w-full px-3 py-1.5 mb-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                  className="input-field px-3 py-1.5 mb-1.5 text-xs"
                 />
                 <div className="max-h-32 overflow-y-auto border border-surface-200 dark:border-surface-700 rounded-lg p-2 bg-surface-50 dark:bg-surface-800/50">
                   {Array.from(uniqueDiagNames).sort().filter(name => !diagNameSearch || name.toLowerCase().includes(diagNameSearch.toLowerCase())).map(name => (
                     <label key={name} className="flex items-center py-1 cursor-pointer">
-                      <input type="checkbox" checked={diagSelectedNames.has(name)} onChange={() => toggleDiagName(name)} className="mr-2 accent-brand-600" />
+                      <input type="checkbox" checked={diagSelectedNames.has(name)} onChange={() => toggleDiagName(name)} className="input-check mr-2" />
                       <span className="text-xs text-surface-700 dark:text-surface-300 font-mono">{name}</span>
                     </label>
                   ))}
@@ -1153,16 +1167,16 @@ function App() {
               {/* Message Search: type toggle + input */}
               <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400">
                     {t('filter.messageType')}
                   </label>
                   <div className="flex gap-3">
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={!diagUseRegex} onChange={() => setDiagUseRegex(false)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={!diagUseRegex} onChange={() => setDiagUseRegex(false)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.keywords')}</span>
                     </label>
                     <label className="flex items-center cursor-pointer">
-                      <input type="radio" checked={diagUseRegex} onChange={() => setDiagUseRegex(true)} className="mr-1.5 accent-brand-600" />
+                      <input type="radio" checked={diagUseRegex} onChange={() => setDiagUseRegex(true)} className="input-check mr-1.5" />
                       <span className="text-xs text-surface-600 dark:text-surface-400">{t('filter.regex')}</span>
                     </label>
                   </div>
@@ -1172,16 +1186,16 @@ function App() {
                   value={diagUseRegex ? diagRegexPattern : diagKeywords}
                   onChange={e => (diagUseRegex ? setDiagRegexPattern(e.target.value) : setDiagKeywords(e.target.value))}
                   placeholder={diagUseRegex ? t('filter.regexPlaceholder') : t('filter.keywordsPlaceholder')}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                  className="input-field px-3 py-2 text-sm"
                 />
               </div>
 
               {/* Time Range */}
               <div className="md:col-span-2 text-left">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">
+                  <label className="block text-xs font-medium text-surface-500 dark:text-surface-400">
                     {t('filter.timeRange')}
-                    <span className="ml-1.5 normal-case tracking-normal font-normal text-surface-400 font-mono">
+                    <span className="ml-1.5 font-normal text-surface-400 font-mono">
                       ({timezone === 'utc' ? 'UTC' : t('table.timezone.local')})
                     </span>
                   </label>
@@ -1189,14 +1203,14 @@ function App() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setDiagTimeStart(epochToDatetimeLocal(Math.floor(diagTimeRange.min))); setDiagTimeEnd(epochToDatetimeLocal(Math.ceil(diagTimeRange.max))); }}
-                        className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                        className="btn-link text-xs"
                       >
                         {t('filter.timeSetRange')}
                       </button>
                       {(diagTimeStart || diagTimeEnd) && (
                         <button
                           onClick={() => { setDiagTimeStart(''); setDiagTimeEnd(''); }}
-                          className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+                          className="btn-link text-xs"
                         >
                           {t('filter.clear')}
                         </button>
@@ -1215,7 +1229,7 @@ function App() {
                       min={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.min) : undefined}
                       max={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.max) : undefined}
                       placeholder={diagTimeRange ? formatTime(diagTimeRange.min) : undefined}
-                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                      className="input-field px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
@@ -1228,7 +1242,7 @@ function App() {
                       min={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.min) : undefined}
                       max={diagTimeRange ? epochToDatetimeLocal(diagTimeRange.max) : undefined}
                       placeholder={diagTimeRange ? formatTime(diagTimeRange.max) : undefined}
-                      className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-mono"
+                      className="input-field px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
@@ -1244,10 +1258,10 @@ function App() {
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
-              <button onClick={applyDiagFilters} className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium transition-colors shadow-sm">{t('filter.apply')}</button>
+              <button onClick={applyDiagFilters} className="btn-primary px-5 py-2 text-sm rounded-lg font-medium">{t('filter.apply')}</button>
               <button
                 onClick={() => { setDiagSelectedNames(new Set()); setDiagSelectedLevels(new Set()); setDiagKeywords(''); setDiagRegexPattern(''); setDiagTimeStart(''); setDiagTimeEnd(''); setFilteredDiagnostics(diagnostics); setExpandedDiagRows(new Set()); }}
-                className="px-5 py-2 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-sm rounded-lg font-medium transition-colors"
+                className="btn-secondary px-5 py-2 text-sm rounded-lg font-medium"
               >
                 {t('filter.clearAll')}
               </button>
@@ -1257,7 +1271,7 @@ function App() {
 
         {/* Export (diagnostics) */}
         {activeTab === 'diagnostics' && filteredDiagnostics.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl p-5 mb-6 animate-fade-in stagger-3">
+          <div className="card p-5 mb-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <Download className="w-4 h-4 text-surface-400" />
@@ -1273,19 +1287,19 @@ function App() {
                       type="checkbox"
                       checked={exportIgnoresTimeFilter}
                       onChange={e => setExportIgnoresTimeFilter(e.target.checked)}
-                      className="accent-brand-600"
+                      className="input-check"
                     />
                     <span className="text-xs text-surface-500 dark:text-surface-400 underline decoration-dotted decoration-surface-400">{t('export.ignoreTimeFilter')}</span>
                   </label>
                 )}
                 <div className="flex gap-2">
-                  <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
-                  <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
-                  <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
+                  <button onClick={() => handleExport('csv')} className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md">CSV</button>
+                  <button onClick={() => handleExport('json')} className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md">JSON</button>
+                  <button onClick={() => handleExport('txt')} className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md">TXT</button>
                   <button
                     onClick={() => handleExport('parquet')}
                     data-testid="export-diagnostics-parquet"
-                    className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
+                    className="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md"
                   >
                     Parquet
                   </button>
@@ -1297,7 +1311,7 @@ function App() {
 
         {/* Diagnostics Table */}
         {activeTab === 'diagnostics' && filteredDiagnostics.length > 0 && (
-          <div className="bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden animate-fade-in stagger-4">
+          <div className="card overflow-hidden">
             <div className="px-5 py-3 border-b border-surface-200 dark:border-surface-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100">
                 {t('table.diagnosticsTitle')} <span className="ml-2 text-xs font-mono text-surface-400">{filteredDiagnostics.length.toLocaleString()}</span>
@@ -1306,10 +1320,10 @@ function App() {
                 <div className="flex items-center gap-1 bg-surface-100/60 dark:bg-surface-800/40 rounded-md p-0.5">
                   <span className="text-xs text-surface-400 px-1.5">{t('table.show')}</span>
                   {[100, 500, 1000, 5000, 10000].map(n => (
-                    <button key={n} onClick={() => setPreviewLimit(n)} className={`min-w-[2.5rem] px-1.5 py-0.5 text-xs font-mono rounded transition-colors text-center ${previewLimit === n ? 'bg-brand-600 text-white shadow-sm' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/40'}`}>{n.toLocaleString()}</button>
+                    <button key={n} onClick={() => setPreviewLimit(n)} className={`btn-chip min-w-[2.5rem] px-1.5 py-0.5 text-xs font-mono rounded text-center ${previewLimit === n ? 'bg-brand-600 text-white shadow-sm' : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/40'}`}>{n.toLocaleString()}</button>
                   ))}
                 </div>
-                <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">
+                <button onClick={() => setTimezone(timezone === 'local' ? 'utc' : 'local')} className="btn-chip px-2.5 py-0.5 text-xs font-mono rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700">
                   {timezone === 'local' ? t('table.timezone.local') : t('table.timezone.utc')}
                 </button>
               </div>
@@ -1395,7 +1409,7 @@ function App() {
 
         {/* Empty state for diagnostics */}
         {activeTab === 'diagnostics' && diagnostics.length > 0 && filteredDiagnostics.length === 0 && (
-          <div className="text-center py-12 animate-fade-in">
+          <div className="text-center py-12">
             <p className="text-surface-400 dark:text-surface-500 text-sm">{t('empty.diagnostics')}</p>
           </div>
         )}
@@ -1409,7 +1423,7 @@ function App() {
             href="https://github.com/Tiryoh/rosbag-analyzer-web"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-surface-500 dark:text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+            className="btn-chip rounded inline-flex items-center gap-1.5 text-xs text-surface-500 dark:text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
           >
             <Github className="w-3.5 h-3.5" />
             {t('footer.source')}
