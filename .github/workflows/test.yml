@@ -83,3 +83,83 @@ jobs:
           name: playwright-report-${{ matrix.variant }}
           path: ${{ matrix.variant == 'singlefile' && 'playwright-report-singlefile/' || 'playwright-report/' }}
           retention-days: 14
+
+  # Verify LLM feature flag correctly strips SQL/LLM code when disabled
+  feature-flag-verification:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      # Build without flag (default) and verify no SQL/LLM code
+      - name: Build standard without LLM flag
+        run: npm run build
+
+      - name: Verify standard build excludes SQL engine
+        run: |
+          set -euo pipefail
+          echo "Checking for SQLite/wasm SQL engine code in dist/..."
+          if grep -r -i -E 'sqlite|sql\.js' dist/ 2>/dev/null; then
+            echo "ERROR: Found SQLite/SQL engine references in standard build (VITE_ENABLE_LLM should be off by default)"
+            exit 1
+          fi
+          echo "✓ No SQLite/SQL engine code found in standard build"
+
+      - name: Verify standard build excludes OpenAI references
+        run: |
+          set -euo pipefail
+          echo "Checking for api.openai.com in dist/..."
+          if grep -r 'api\.openai\.com' dist/ 2>/dev/null; then
+            echo "ERROR: Found api.openai.com references in standard build"
+            exit 1
+          fi
+          echo "✓ No OpenAI API references found in standard build"
+
+      # Build singlefile without flag and verify
+      - name: Build singlefile without LLM flag
+        run: npm run build:singlefile
+
+      - name: Verify singlefile build excludes SQL engine
+        run: |
+          set -euo pipefail
+          echo "Checking for SQLite/wasm SQL engine code in dist-singlefile/..."
+          if grep -r -i -E 'sqlite|sql\.js' dist-singlefile/ 2>/dev/null; then
+            echo "ERROR: Found SQLite/SQL engine references in singlefile build (VITE_ENABLE_LLM should be off by default)"
+            exit 1
+          fi
+          echo "✓ No SQLite/SQL engine code found in singlefile build"
+
+      - name: Verify singlefile build excludes OpenAI references
+        run: |
+          set -euo pipefail
+          echo "Checking for api.openai.com in dist-singlefile/..."
+          if grep -r 'api\.openai\.com' dist-singlefile/ 2>/dev/null; then
+            echo "ERROR: Found api.openai.com references in singlefile build"
+            exit 1
+          fi
+          echo "✓ No OpenAI API references found in singlefile build"
+
+      # Build with flag and verify SQL code IS included
+      - name: Build with LLM flag enabled
+        run: VITE_ENABLE_LLM=1 npm run build
+        env:
+          VITE_ENABLE_LLM: "1"
+
+      - name: Verify LLM build includes SQL engine
+        run: |
+          set -euo pipefail
+          echo "Checking that SQLite/SQL engine code IS present in LLM-enabled build..."
+          if ! grep -r -i -E 'sqlite|sql\.js' dist/ 2>/dev/null; then
+            echo "ERROR: SQLite/SQL engine code NOT found in LLM-enabled build (expected to be present)"
+            exit 1
+          fi
+          echo "✓ SQL engine code found in LLM-enabled build as expected"
+

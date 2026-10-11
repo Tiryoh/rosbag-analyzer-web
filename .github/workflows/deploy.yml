@@ -45,6 +45,8 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_ENABLE_LLM: "1"
 
       - uses: cloudflare/wrangler-action@v3
         id: deploy

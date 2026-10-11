@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo, Fragment } from 'react';
+import { useRef, useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
 import { Upload, Filter, Download, BarChart3, Github, ChevronDown, ChevronRight } from 'lucide-react';
 import { assertNever, isReindexFailureLike, type ReindexMeta, type ReindexWarning } from '../core/reindexUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel, TopicInfo, ProgressInfo } from '../core/types';
@@ -20,6 +20,11 @@ import {
 import { fileToBagSource, downloadFile, downloadBytes } from './fileAdapter';
 import { useI18n } from './i18n';
 import logoUrl from './assets/logo.png';
+
+// Conditional lazy load for LLM features (SQL console)
+const SqlConsole = import.meta.env.VITE_ENABLE_LLM === '1'
+  ? lazy(() => import('./llm/SqlConsole').then(m => ({ default: m.SqlConsole })))
+  : null;
 
 function formatReindexWarningKey(warning: ReindexWarning): string {
   switch (warning.code) {
@@ -1306,6 +1311,24 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* SQL Console (LLM feature, opt-in) */}
+        {SqlConsole && loadCompleted && (messages.length > 0 || diagnostics.length > 0) && (
+          <div className="mb-6 animate-fade-in stagger-3">
+            <Suspense fallback={
+              <div className="border border-gray-300 rounded-lg p-4 bg-white">
+                <div className="text-gray-600">{t('sql.loading')}</div>
+              </div>
+            }>
+              <SqlConsole
+                messages={messages}
+                diagnostics={diagnostics}
+                timezone={timezone}
+                t={t}
+              />
+            </Suspense>
           </div>
         )}
 

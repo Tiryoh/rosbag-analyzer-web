@@ -34,6 +34,8 @@ function bagSourceToFilelike(source: BagSource) {
 
 type Timezone = 'local' | 'utc';
 
+export type { Timezone };
+
 
 type BagConnectionView = {
   topic: string;
@@ -416,6 +418,8 @@ function formatTimestamp(timestamp: number, timezone: Timezone = 'local'): strin
   const ms = String(date.getMilliseconds()).padStart(3, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
 }
+
+export { formatTimestamp };
 
 export function escapeCSV(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
