@@ -18,7 +18,7 @@
 - 結果を JSON / CSV で保存する
 
 ベンチマーク実装は、この ADR を導入したブランチの先行コミット
-`Add local WebLLM benchmark harness` に保存する。
+`Add local WebLLM benchmark harness`（`37a71e159d5cf1b8656cd9bdded075cd23e6d253`、PR #24）に保存する。
 本番アプリで利用しない依存関係とコードを main の最終ツリーへ残さないため、その後のコミットで削除する。
 
 実機ブラウザで得られた結果は次のとおりだった。
