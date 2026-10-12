@@ -34,14 +34,39 @@ export class SqlValidationError extends Error {
 }
 
 /**
- * Remove string literals from SQL to avoid false positives in keyword detection.
- * Replaces single-quoted and double-quoted strings with empty strings.
+ * Blank out comments and string literal contents so that only SQL code remains.
+ * The result has the same length as the input, so indices map back to `sql`.
+ * Comments become spaces (newlines are kept), and string literals keep their
+ * quotes with their contents replaced by spaces. Scanning is done in a single
+ * pass, so comment markers inside strings and quotes inside comments are not
+ * mistaken for each other.
  */
-function removeStringLiterals(sql: string): string {
-  // Remove single-quoted strings (handle escaped quotes '')
-  let result = sql.replace(/'(?:[^']|'')*'/g, '');
-  // Remove double-quoted identifiers/strings (handle escaped quotes "")
-  result = result.replace(/"(?:[^"]|"")*"/g, '');
+function maskNonCode(sql: string): string {
+  let result = '';
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    let end: number;
+    if (ch === '-' && sql[i + 1] === '-') {
+      const newline = sql.indexOf('\n', i + 2);
+      end = newline < 0 ? sql.length : newline;
+      result += ' '.repeat(end - i);
+    } else if (ch === '/' && sql[i + 1] === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      end = close < 0 ? sql.length : close + 2;
+      result += sql.slice(i, end).replace(/[^\n]/g, ' ');
+    } else if (ch === "'" || ch === '"') {
+      // Doubled quotes are escapes, so scanning to each closing quote handles them.
+      // An unterminated literal runs to the end of the input.
+      const close = sql.indexOf(ch, i + 1);
+      end = close < 0 ? sql.length : close + 1;
+      result += close < 0 ? ch + ' '.repeat(end - i - 1) : ch + ' '.repeat(end - i - 2) + ch;
+    } else {
+      end = i + 1;
+      result += ch;
+    }
+    i = end;
+  }
   return result;
 }
 
@@ -56,15 +81,8 @@ export function validateSql(sql: string): void {
     throw new SqlValidationError('Query is empty');
   }
 
-  // Remove comments (both -- and /* */ style)
-  const withoutLineComments = trimmed.split('\n').map(line => {
-    const commentIdx = line.indexOf('--');
-    return commentIdx >= 0 ? line.substring(0, commentIdx) : line;
-  }).join('\n');
-  
-  const withoutComments = withoutLineComments.replace(/\/\*[\s\S]*?\*\//g, '');
-  const withoutStrings = removeStringLiterals(withoutComments);
-  const normalized = withoutStrings.trim().toUpperCase();
+  const code = maskNonCode(trimmed);
+  const normalized = code.trim().toUpperCase();
 
   if (!normalized) {
     throw new SqlValidationError('Query contains only comments');
@@ -80,7 +98,7 @@ export function validateSql(sql: string): void {
   for (const keyword of FORBIDDEN_KEYWORDS) {
     // Use word boundaries to avoid false positives
     const pattern = new RegExp(`\\b${keyword}\\b`, 'i');
-    if (pattern.test(withoutStrings)) {
+    if (pattern.test(code)) {
       throw new SqlValidationError(`Forbidden keyword: ${keyword}`);
     }
   }
@@ -88,7 +106,7 @@ export function validateSql(sql: string): void {
   // Check for forbidden functions
   for (const func of FORBIDDEN_FUNCTIONS) {
     const pattern = new RegExp(`\\b${func}\\s*\\(`, 'i');
-    if (pattern.test(withoutStrings)) {
+    if (pattern.test(code)) {
       throw new SqlValidationError(`Forbidden function: ${func}`);
     }
   }
@@ -97,4 +115,15 @@ export function validateSql(sql: string): void {
   if (!normalized.startsWith('SELECT') && !normalized.startsWith('WITH')) {
     throw new SqlValidationError('Only SELECT or WITH queries are allowed');
   }
+}
+
+/**
+ * Wrap a validated query so that at most `limit` rows are returned.
+ * A trailing semicolon is removed, and the query is placed on its own lines
+ * so that a trailing line comment cannot swallow the closing parenthesis.
+ */
+export function wrapWithLimit(sql: string, limit: number): string {
+  const last = maskNonCode(sql).trimEnd().length - 1;
+  const body = last >= 0 && sql[last] === ';' ? sql.slice(0, last) + sql.slice(last + 1) : sql;
+  return `SELECT * FROM (\n${body.trim()}\n) LIMIT ${limit}`;
 }

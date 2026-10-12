@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateSql, SqlValidationError } from './sqlValidator';
+import { validateSql, wrapWithLimit, SqlValidationError } from './sqlValidator';
+import { getTestSqlModule } from './sqlTestUtils';
 
 describe('sqlValidator', () => {
   describe('valid queries', () => {
@@ -153,6 +154,85 @@ describe('sqlValidator', () => {
     it('should reject forbidden keywords adjacent to string literals', () => {
       expect(() => validateSql("SELECT * FROM rosout WHERE message = 'ok' OR severity = 'WARN' UNION SELECT * FROM diagnostics")).not.toThrow();
       expect(() => validateSql("SELECT * FROM rosout; INSERT INTO rosout VALUES (1)")).toThrow(SqlValidationError);
+    });
+  });
+
+  describe('comment markers inside string literals', () => {
+    it('should accept -- inside a string followed by keyword-like strings on the next line', () => {
+      expect(() => validateSql("SELECT * FROM rosout WHERE message = '--'\nAND node = 'x' AND message LIKE '%update%'")).not.toThrow();
+    });
+
+    it('should accept /* inside a string followed by keyword-like strings', () => {
+      expect(() => validateSql("SELECT * FROM rosout WHERE message LIKE '%/*%' OR message LIKE '%drop%'")).not.toThrow();
+    });
+
+    it('should not hide a second statement behind -- inside a string', () => {
+      expect(() => validateSql("SELECT '--'; DELETE FROM rosout")).toThrow('Multiple statements');
+    });
+
+    it('should not hide a forbidden keyword behind -- inside a string', () => {
+      expect(() => validateSql("SELECT '--' FROM rosout WHERE 1 = (DELETE FROM rosout)")).toThrow('Forbidden keyword: DELETE');
+    });
+
+    it('should not hide a parenthesis-balanced second statement behind -- inside a string', () => {
+      expect(() => validateSql("SELECT '--' FROM rosout) LIMIT 1; DELETE FROM rosout; SELECT (1")).toThrow(SqlValidationError);
+    });
+
+    it('should not hide a second statement behind /* inside a string', () => {
+      expect(() => validateSql("SELECT '/*' FROM rosout; DELETE FROM rosout; SELECT '*/'")).toThrow(SqlValidationError);
+    });
+
+    it('should not crash on an unterminated quote at the end', () => {
+      expect(() => validateSql("SELECT '")).not.toThrow(RangeError);
+      expect(() => validateSql("SELECT '--; DELETE FROM rosout")).not.toThrow(RangeError);
+    });
+
+    it('should not let a quote inside a line comment change string boundaries', () => {
+      expect(() => validateSql("SELECT * FROM rosout -- it's\nWHERE node = 'delete'")).not.toThrow();
+      expect(() => validateSql("SELECT * FROM rosout -- it's\n; DELETE FROM rosout -- '")).toThrow(SqlValidationError);
+    });
+  });
+
+  describe('wrapWithLimit', () => {
+    async function runWrapped(sql: string): Promise<unknown[][]> {
+      validateSql(sql);
+      const SQL = await getTestSqlModule();
+      const db = new SQL.Database();
+      try {
+        db.run("CREATE TABLE rosout (message TEXT); INSERT INTO rosout VALUES ('a'), ('b'), ('c')");
+        const result = db.exec(wrapWithLimit(sql, 2));
+        return result[0]?.values ?? [];
+      } finally {
+        db.close();
+      }
+    }
+
+    it('should apply the limit to a plain query', async () => {
+      expect(await runWrapped('SELECT message FROM rosout')).toHaveLength(2);
+    });
+
+    it('should strip a trailing semicolon', async () => {
+      expect(await runWrapped('SELECT message FROM rosout;')).toHaveLength(2);
+    });
+
+    it('should handle a trailing line comment', async () => {
+      expect(await runWrapped('SELECT message FROM rosout -- note')).toHaveLength(2);
+    });
+
+    it('should handle a semicolon followed by a line comment', async () => {
+      expect(await runWrapped('SELECT message FROM rosout; -- note')).toHaveLength(2);
+    });
+
+    it('should handle a semicolon followed by a block comment', async () => {
+      expect(await runWrapped('SELECT message FROM rosout; /* note */')).toHaveLength(2);
+    });
+
+    it('should keep a semicolon inside a trailing string literal', async () => {
+      expect(await runWrapped("SELECT ';' AS s")).toEqual([[';']]);
+    });
+
+    it('should not treat -- inside a string literal as a comment', async () => {
+      expect(await runWrapped("SELECT '--' AS s;")).toEqual([['--']]);
     });
   });
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { RosoutMessage, DiagnosticStatusEntry } from '../../core/types';
 import { loadDataIntoDb } from './loadSqlData';
-import { validateSql, SqlValidationError } from './sqlValidator';
+import { validateSql, wrapWithLimit, SqlValidationError } from './sqlValidator';
 import { initSqlEngine, SQL_THIRD_PARTY_LICENSES_URL } from './sqlEngine';
 import type { SqlJsModule } from './sqlEngine';
 import { getSqlText, type SqlTranslationKey } from './i18n';
@@ -108,10 +108,7 @@ export function SqlConsole({ messages, diagnostics, timezone, lang }: SqlConsole
       validateSql(sql);
 
       // Execute query with result limit
-      const limitedSql = sql.trim().endsWith(';') ? sql.trim().slice(0, -1) : sql.trim();
-      const wrappedSql = `SELECT * FROM (${limitedSql}) LIMIT ${RESULT_LIMIT}`;
-      
-      const stmt = db.prepare(wrappedSql);
+      const stmt = db.prepare(wrapWithLimit(sql, RESULT_LIMIT));
       const columns = stmt.getColumnNames();
       const values: unknown[][] = [];
 
