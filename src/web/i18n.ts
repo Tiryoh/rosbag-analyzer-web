@@ -122,20 +122,6 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'footer.offline': 'Works offline — all processing runs locally in your browser.',
     'footer.source': 'View source on GitHub',
 
-    // SQL Console
-    'sql.title': 'SQL Console',
-    'sql.description': 'Query loaded rosout and diagnostics data using SQL. Read-only, limited to 1000 rows.',
-    'sql.loading': 'Initializing SQL engine...',
-    'sql.showSchema': 'Show table schema',
-    'sql.queryLabel': 'SQL Query',
-    'sql.queryPlaceholder': 'SELECT * FROM rosout WHERE severity = \'ERROR\' LIMIT 10',
-    'sql.queryHint': 'Only SELECT and WITH queries allowed. Press Ctrl+Enter or Cmd+Enter to execute.',
-    'sql.execute': 'Run Query',
-    'sql.executing': 'Executing...',
-    'sql.rowCount': 'Rows',
-    'sql.limited': 'limited',
-    'sql.noResults': 'Query returned no results',
-    'sql.licenses': 'Third-party licenses (sql.js / SQLite wasm)',
   },
   ja: {
     // Header
@@ -256,20 +242,6 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'footer.offline': 'オフラインでも利用できます。すべての処理はブラウザ内で行われます。',
     'footer.source': 'GitHub でソースを見る',
 
-    // SQL Console
-    'sql.title': 'SQLコンソール',
-    'sql.description': '読み込まれた rosout と diagnostics データを SQL でクエリできます。読み取り専用、最大1000行まで。',
-    'sql.loading': 'SQLエンジンを初期化中...',
-    'sql.showSchema': 'テーブルスキーマを表示',
-    'sql.queryLabel': 'SQLクエリ',
-    'sql.queryPlaceholder': 'SELECT * FROM rosout WHERE severity = \'ERROR\' LIMIT 10',
-    'sql.queryHint': 'SELECT と WITH クエリのみ使用可能。Ctrl+Enter または Cmd+Enter で実行。',
-    'sql.execute': 'クエリを実行',
-    'sql.executing': '実行中...',
-    'sql.rowCount': '行数',
-    'sql.limited': '制限あり',
-    'sql.noResults': 'クエリ結果が見つかりませんでした',
-    'sql.licenses': 'サードパーティライセンス（sql.js / SQLite wasm）',
   },
 };
 

@@ -4,6 +4,8 @@ import { loadDataIntoDb } from './loadSqlData';
 import { validateSql, SqlValidationError } from './sqlValidator';
 import { initSqlEngine, SQL_THIRD_PARTY_LICENSES_URL } from './sqlEngine';
 import type { SqlJsModule } from './sqlEngine';
+import { getSqlText, type SqlTranslationKey } from './i18n';
+import type { Lang } from '../i18n';
 import { Play } from 'lucide-react';
 
 type Database = InstanceType<SqlJsModule['Database']>;
@@ -12,7 +14,7 @@ interface SqlConsoleProps {
   messages: RosoutMessage[];
   diagnostics: DiagnosticStatusEntry[];
   timezone: 'local' | 'utc';
-  t: (key: string) => string;
+  lang: Lang;
 }
 
 const RESULT_LIMIT = 1000;
@@ -41,7 +43,8 @@ CREATE TABLE diagnostics (
   values_json TEXT     -- JSON array of key-value pairs
 );`;
 
-export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsoleProps) {
+export function SqlConsole({ messages, diagnostics, timezone, lang }: SqlConsoleProps) {
+  const t = (key: SqlTranslationKey) => getSqlText(lang, key);
   const [db, setDb] = useState<Database | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -136,8 +139,8 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
   if (loading) {
     return (
       <div className="border border-gray-300 rounded-lg p-4 bg-white">
-        <h2 className="text-lg font-semibold mb-2">{t('sql.title')}</h2>
-        <div className="text-gray-600">{t('sql.loading')}</div>
+        <h2 className="text-lg font-semibold mb-2">{t('title')}</h2>
+        <div className="text-gray-600">{t('loading')}</div>
       </div>
     );
   }
@@ -145,7 +148,7 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
   if (error) {
     return (
       <div className="border border-red-300 rounded-lg p-4 bg-red-50">
-        <h2 className="text-lg font-semibold mb-2 text-red-700">{t('sql.title')}</h2>
+        <h2 className="text-lg font-semibold mb-2 text-red-700">{t('title')}</h2>
         <div className="text-red-600">{error}</div>
       </div>
     );
@@ -154,8 +157,8 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
   return (
     <div className="border border-gray-300 rounded-lg p-4 bg-white space-y-4">
       <div>
-        <h2 className="text-lg font-semibold mb-2">{t('sql.title')}</h2>
-        <p className="text-sm text-gray-600 mb-2">{t('sql.description')}</p>
+        <h2 className="text-lg font-semibold mb-2">{t('title')}</h2>
+        <p className="text-sm text-gray-600 mb-2">{t('description')}</p>
         <p className="text-xs text-gray-500">
           <a
             href={SQL_THIRD_PARTY_LICENSES_URL}
@@ -163,14 +166,14 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
             rel="noopener noreferrer"
             className="underline hover:text-gray-700"
           >
-            {t('sql.licenses')}
+            {t('licenses')}
           </a>
         </p>
       </div>
 
       <details className="text-sm">
         <summary className="cursor-pointer font-medium text-gray-700 mb-2">
-          {t('sql.showSchema')}
+          {t('showSchema')}
         </summary>
         <pre className="bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto text-xs font-mono">
           {SCHEMA_INFO}
@@ -179,14 +182,14 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
 
       <div>
         <label htmlFor="sql-input" className="block text-sm font-medium text-gray-700 mb-1">
-          {t('sql.queryLabel')}
+          {t('queryLabel')}
         </label>
         <textarea
           id="sql-input"
           value={sql}
           onChange={(e) => setSql(e.target.value)}
           className="w-full h-32 p-2 border border-gray-300 rounded font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          placeholder={t('sql.queryPlaceholder')}
+          placeholder={t('queryPlaceholder')}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
@@ -195,7 +198,7 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
           }}
         />
         <div className="mt-1 text-xs text-gray-500">
-          {t('sql.queryHint')}
+          {t('queryHint')}
         </div>
       </div>
 
@@ -206,11 +209,11 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
           <Play size={16} />
-          {executing ? t('sql.executing') : t('sql.execute')}
+          {executing ? t('executing') : t('execute')}
         </button>
         {rowCount > 0 && (
           <span className="text-sm text-gray-600">
-            {t('sql.rowCount')}: {rowCount} {rowCount >= RESULT_LIMIT && `(${t('sql.limited')})`}
+            {t('rowCount')}: {rowCount} {rowCount >= RESULT_LIMIT && `(${t('limited')})`}
           </span>
         )}
       </div>
@@ -259,7 +262,7 @@ export function SqlConsole({ messages, diagnostics, timezone, t }: SqlConsolePro
 
       {results && results.values.length === 0 && (
         <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600 text-center">
-          {t('sql.noResults')}
+          {t('noResults')}
         </div>
       )}
     </div>

@@ -1319,14 +1319,14 @@ function App() {
           <div className="mb-6 animate-fade-in stagger-3">
             <Suspense fallback={
               <div className="border border-gray-300 rounded-lg p-4 bg-white">
-                <div className="text-gray-600">{t('sql.loading')}</div>
+                <div className="text-gray-600">{t('loading.message')}</div>
               </div>
             }>
               <SqlConsole
                 messages={messages}
                 diagnostics={diagnostics}
                 timezone={timezone}
-                t={t}
+                lang={lang}
               />
             </Suspense>
           </div>
