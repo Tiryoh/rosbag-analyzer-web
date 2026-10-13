@@ -45,8 +45,10 @@ CREATE TABLE diagnostics (
 
 export function SqlConsole({ messages, diagnostics, timezone, lang }: SqlConsoleProps) {
   const t = (key: SqlTranslationKey) => getSqlText(lang, key);
+  // The SQL engine and the in-memory database are created only after the user opens the panel.
+  const [opened, setOpened] = useState(false);
   const [db, setDb] = useState<Database | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [sql, setSql] = useState('SELECT * FROM rosout LIMIT 10');
   const [results, setResults] = useState<{ columns: string[]; values: unknown[][] } | null>(null);
@@ -57,6 +59,7 @@ export function SqlConsole({ messages, diagnostics, timezone, lang }: SqlConsole
 
   // Initialize SQL.js and load data
   useEffect(() => {
+    if (!opened) return;
     let mounted = true;
 
     const init = async () => {
@@ -93,7 +96,7 @@ export function SqlConsole({ messages, diagnostics, timezone, lang }: SqlConsole
         dbRef.current = null;
       }
     };
-  }, [messages, diagnostics, timezone]);
+  }, [opened, messages, diagnostics, timezone]);
 
   const executeQuery = () => {
     if (!db) return;
@@ -132,6 +135,21 @@ export function SqlConsole({ messages, diagnostics, timezone, lang }: SqlConsole
       setExecuting(false);
     }
   };
+
+  if (!opened) {
+    return (
+      <div className="border border-gray-300 rounded-lg p-4 bg-white">
+        <h2 className="text-lg font-semibold mb-2">{t('title')}</h2>
+        <p className="text-sm text-gray-600 mb-3">{t('description')}</p>
+        <button
+          onClick={() => setOpened(true)}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          {t('open')}
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

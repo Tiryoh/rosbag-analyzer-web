@@ -3,6 +3,7 @@ import type { Lang } from '../i18n';
 export type SqlTranslationKey =
   | 'title'
   | 'description'
+  | 'open'
   | 'loading'
   | 'showSchema'
   | 'queryLabel'
@@ -19,6 +20,7 @@ const translations: Record<Lang, Record<SqlTranslationKey, string>> = {
   en: {
     title: 'SQL Console',
     description: 'Query loaded rosout and diagnostics data using SQL. Read-only, limited to 1000 rows.',
+    open: 'Open SQL Console',
     loading: 'Initializing SQL engine...',
     showSchema: 'Show table schema',
     queryLabel: 'SQL Query',
@@ -34,6 +36,7 @@ const translations: Record<Lang, Record<SqlTranslationKey, string>> = {
   ja: {
     title: 'SQLコンソール',
     description: '読み込まれた rosout と diagnostics データを SQL でクエリできます。読み取り専用、最大1000行まで。',
+    open: 'SQLコンソールを開く',
     loading: 'SQLエンジンを初期化中...',
     showSchema: 'テーブルスキーマを表示',
     queryLabel: 'SQLクエリ',
