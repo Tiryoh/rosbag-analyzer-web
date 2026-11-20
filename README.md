@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo.png" alt="ROSbag Analyzer" width="400" />
+  <img src="docs/images/logo-horizontal.png" alt="ROSbag Analyzer" width="400" />
 </p>
 
 # ROSbag Analyzer - Web Application
