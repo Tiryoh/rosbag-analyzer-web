@@ -19,7 +19,7 @@ import {
 } from '../core/rosbagUtils';
 import { fileToBagSource, downloadFile, downloadBytes } from './fileAdapter';
 import { useI18n } from './i18n';
-import logoUrl from './assets/logo.png';
+import logoUrl from './assets/logo-horizontal.png';
 
 function formatReindexWarningKey(warning: ReindexWarning): string {
   switch (warning.code) {
@@ -489,7 +489,7 @@ function App() {
             </div>
           </div>
           <div className="text-center">
-            <img src={logoUrl} alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
+            <img src={logoUrl} alt="ROSbag Analyzer" className="mx-auto h-20 sm:h-24 w-auto max-w-full mb-3 dark:bg-white dark:rounded-xl dark:px-4 dark:py-2" />
             <h1 className="sr-only">ROSbag Analyzer</h1>
             <p className="text-surface-600 dark:text-surface-300 text-sm mx-auto leading-relaxed">
               {t('header.description')}

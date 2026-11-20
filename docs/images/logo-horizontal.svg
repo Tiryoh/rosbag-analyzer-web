@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="380" viewBox="0 0 650 190" role="img" aria-label="ROSbag Analyzer"><g transform="translate(6 0)"><defs>
+<linearGradient id="bag" x1="0.16" y1="0" x2="0.85" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#168BFA"/><stop offset="0.46" stop-color="#0860C6"/><stop offset="1" stop-color="#08295F"/></linearGradient>
+<linearGradient id="handle" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#0756A5"/><stop offset="1" stop-color="#043771"/></linearGradient>
+<clipPath id="case"><rect x="12" y="30" width="176" height="144" rx="43"/></clipPath>
+</defs>
+<path d="M67 39 V25 Q67 13 79 13 H121 Q133 13 133 25 V39" fill="none" stroke="url(#handle)" stroke-width="13" stroke-linejoin="round"/>
+<rect x="12" y="30" width="176" height="144" rx="43" fill="url(#bag)"/>
+<g clip-path="url(#case)"><path d="M-4 106 H32 C40 106 40 122 47 122 C56 122 65 78 77 78 C91 78 98 144 111 144 C124 144 131 106 145 106 H206" fill="none" stroke="white" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/><circle cx="153" cy="106" r="16" fill="white"/><circle cx="153" cy="106" r="10" fill="#FF8200"/></g></g><g font-family="Inter, DejaVu Sans, Arial, sans-serif" letter-spacing="-2.5"><text x="233" y="96" font-size="77" font-weight="800" fill="#092757">ROSbag</text><text x="236" y="162" font-size="67" font-weight="500" fill="#137BEB">Analyzer</text></g></svg>
